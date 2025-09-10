@@ -28,17 +28,6 @@ lambda_handler = comparison_module.lambda_handler
 class TestComparisonLambda:
     """Test cases for comparison Lambda function."""
 
-    def setup_method(self):
-        self.lambda_module = importlib.import_module("comparison_lambda")
-        self.lambda_handler = self.lambda_module.lambda_handler
-        self.comparator_class = self.lambda_module.MSARatesComparator
-        self.calculate_variances = self.lambda_module._calculate_rate_variances
-
-    def _build_event(self, body: Dict[str, Any]) -> Dict[str, Any]:
-        return {
-            "body": json.dumps(body)
-        }
-
     @pytest.fixture
     def sample_extraction_data(self):
         """Sample extracted invoice data for testing."""

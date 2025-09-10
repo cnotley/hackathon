@@ -10,7 +10,7 @@ import logging
 import os
 import boto3
 from typing import Dict, Any, List
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
 from botocore.exceptions import ClientError
 import time

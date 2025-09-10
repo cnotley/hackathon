@@ -41,9 +41,6 @@ class ValidationError(Exception):
     """Custom exception for data validation errors."""
     pass
 
-class SageMakerError(Exception):
-    """Custom exception for SageMaker-related errors."""
-    pass
 
 # Environment variables
 MSA_RATES_TABLE = os.getenv('MSA_RATES_TABLE', 'msa-rates')
@@ -147,17 +144,6 @@ class DataValidator:
         
         return validation_results
     
-    @staticmethod
-    def validate_numeric_ranges(value: float, field_name: str, min_val: float = 0, max_val: float = None) -> Tuple[bool, str]:
-        """Validate numeric values are within acceptable ranges."""
-        if value < min_val:
-            return False, f"{field_name} cannot be less than {min_val}"
-        
-        if max_val is not None and value > max_val:
-            return False, f"{field_name} cannot be greater than {max_val}"
-        
-        return True, ""
-
 
 class MSARatesComparator:
     """Handles comparison of extracted data against MSA rates."""
@@ -417,7 +403,7 @@ class AnomalyDetector:
             if isinstance(score, (int, float)):
                 scores.append(float(score))
 
-        for idx, (row, score) in enumerate(zip(labor_df.itertuples(index=False), scores)):
+        for row, score in zip(labor_df.itertuples(index=False), scores):
             if abs(score) > ANOMALY_THRESHOLD:
                 anomalies.append({
                     'type': 'labor_anomaly',

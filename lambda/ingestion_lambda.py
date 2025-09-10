@@ -90,34 +90,6 @@ class FileProcessor:
         metadata.update(file_info.get('metadata', {}))
         return metadata
 
-    def apply_processing_tags(self, key: str, metadata: Dict[str, Any]) -> None:
-        tags = {
-            'ProcessingStatus': 'processed',
-            'DocumentType': metadata.get('document_type', 'unknown'),
-            'ProcessingPriority': metadata.get('processing_priority', 'low'),
-            'ProcessedTimestamp': datetime.utcnow().isoformat()
-        }
-        max_retries = 3
-        retry_delay = 1
-        for attempt in range(max_retries):
-            try:
-                tag_set = [{'Key': k, 'Value': v} for k, v in tags.items()]
-                self.s3_client.put_object_tagging(
-                    Bucket=self.bucket_name,
-                    Key=key,
-                    Tagging={'TagSet': tag_set}
-                )
-                logger.info(f"Applied processing tags to {key}")
-                return
-            except ClientError as e:
-                error_code = e.response['Error']['Code']
-                if error_code in ['NoSuchKey', 'AccessDenied'] or attempt == max_retries - 1:
-                    logger.error(f"Failed to apply tags to {key} after {attempt + 1} attempts: {e}")
-                    return
-                else:
-                    logger.warning(f"Tagging attempt {attempt + 1} failed for {key}, retrying: {e}")
-                    time.sleep(retry_delay * (2 ** attempt))
-
 class WorkflowOrchestrator:
     def __init__(self, state_machine_arn: str):
         self.state_machine_arn = state_machine_arn

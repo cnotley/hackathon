@@ -27,8 +27,8 @@ class TestMSAInvoiceAuditor:
     """Test cases for the MSAInvoiceAuditor class."""
     
     @pytest.fixture
-    def mock_streamlit_secrets(self):
-        """Mock Streamlit secrets for testing."""
+    def auditor(self):
+        """Create a test instance of MSAInvoiceAuditor."""
         with patch('streamlit.secrets') as mock_secrets:
             mock_secrets.get.side_effect = lambda key, default=None: {
                 'INGESTION_BUCKET': 'test-ingestion-bucket',
@@ -37,11 +37,6 @@ class TestMSAInvoiceAuditor:
                 'BEDROCK_AGENT_ID': 'test-agent-id',
                 'BEDROCK_AGENT_ALIAS_ID': 'TSTALIASID'
             }.get(key, default)
-            yield mock_secrets
-    
-    @pytest.fixture
-    def auditor(self, mock_streamlit_secrets):
-        """Create a test instance of MSAInvoiceAuditor."""
         with patch('boto3.client') as mock_boto3:
             # Mock AWS clients
             mock_s3 = Mock()
@@ -61,17 +56,23 @@ class TestMSAInvoiceAuditor:
             
             return auditor
     
-    def test_init_success(self, mock_streamlit_secrets):
+    def test_init_success(self):
         """Test successful initialization of MSAInvoiceAuditor."""
-        with patch('boto3.client') as mock_boto3:
-            mock_boto3.return_value = Mock()
-            
-            auditor = MSAInvoiceAuditor()
-            
-            assert auditor.ingestion_bucket == 'test-ingestion-bucket'
-            assert auditor.reports_bucket == 'test-reports-bucket'
-            assert auditor.step_function_arn == 'arn:aws:states:us-east-1:123456789012:stateMachine:test-workflow'
-            assert auditor.bedrock_agent_id == 'test-agent-id'
+        with patch('streamlit.secrets') as mock_secrets:
+            mock_secrets.get.side_effect = lambda key, default=None: {
+                'INGESTION_BUCKET': 'test-ingestion-bucket',
+                'REPORTS_BUCKET': 'test-reports-bucket',
+                'STEP_FUNCTION_ARN': 'arn:aws:states:us-east-1:123456789012:stateMachine:test-workflow',
+                'BEDROCK_AGENT_ID': 'test-agent-id',
+                'BEDROCK_AGENT_ALIAS_ID': 'TSTALIASID'
+            }.get(key, default)
+            with patch('boto3.client') as mock_boto3:
+                mock_boto3.return_value = Mock()
+                auditor = MSAInvoiceAuditor()
+        assert auditor.ingestion_bucket == 'test-ingestion-bucket'
+        assert auditor.reports_bucket == 'test-reports-bucket'
+        assert auditor.step_function_arn == 'arn:aws:states:us-east-1:123456789012:stateMachine:test-workflow'
+        assert auditor.bedrock_agent_id == 'test-agent-id'
     
     def test_get_content_type(self, auditor):
         """Test content type detection for PDF and unsupported types."""
@@ -413,29 +414,20 @@ class TestUIWorkflowIntegration:
                 'BEDROCK_AGENT_ID': 'test-agent-id',
                 'BEDROCK_AGENT_ALIAS_ID': 'TSTALIASID'
             }.get(key, default)
-            
             with patch('boto3.client') as mock_boto3:
                 mock_s3 = Mock()
                 mock_stepfunctions = Mock()
                 mock_bedrock = Mock()
-                
-                # Mock successful S3 upload
                 mock_s3.put_object.return_value = {}
-                
-                # Mock successful Step Functions execution
                 mock_stepfunctions.start_execution.return_value = {
                     'executionArn': 'arn:aws:states:us-east-1:123456789012:execution:test-workflow:test-execution'
                 }
-                
-                # Mock successful execution status
                 mock_stepfunctions.describe_execution.return_value = {
                     'status': 'SUCCEEDED',
                     'startDate': datetime(2024, 12, 1, 14, 30, 0),
                     'stopDate': datetime(2024, 12, 1, 14, 35, 0),
                     'input': '{"bucket": "test-bucket", "key": "test-key"}'
                 }
-                
-                # Mock successful report listing
                 mock_s3.list_objects_v2.return_value = {
                     'Contents': [
                         {
@@ -445,13 +437,11 @@ class TestUIWorkflowIntegration:
                         }
                     ]
                 }
-                
                 mock_boto3.side_effect = lambda service: {
                     's3': mock_s3,
                     'stepfunctions': mock_stepfunctions,
                     'bedrock-agent-runtime': mock_bedrock
                 }[service]
-                
                 yield {
                     's3': mock_s3,
                     'stepfunctions': mock_stepfunctions,
@@ -461,28 +451,18 @@ class TestUIWorkflowIntegration:
     def test_complete_workflow_success(self, mock_complete_workflow):
         """Test complete workflow from upload to report generation."""
         auditor = MSAInvoiceAuditor()
-        
-        # Step 1: Upload file
         with patch('datetime') as mock_datetime:
             mock_datetime.now.return_value.strftime.return_value = '20241201_143000'
-            
             s3_key = auditor.upload_file_to_s3(b'test invoice content', 'test_invoice.pdf')
             assert s3_key == 'uploads/20241201_143000_test_invoice.pdf'
-        
-        # Step 2: Start execution
         with patch('time.time', return_value=1234567890):
             execution_arn = auditor.start_step_function_execution(s3_key, 'Compare to MSA')
             assert execution_arn == 'arn:aws:states:us-east-1:123456789012:execution:test-workflow:test-execution'
-        
-        # Step 3: Check execution status
         status = auditor.get_execution_status(execution_arn)
         assert status['status'] == 'SUCCEEDED'
-        
-        # Step 4: List generated reports
         reports = auditor.list_reports(s3_key)
         assert len(reports) == 1
-        assert reports[0]['type'] == 'Excel Report'
-        assert reports[0]['size'] == 15000
+        assert reports[0]['key'] == 'reports/test_invoice/audit_report.xlsx'
 
 
 if __name__ == '__main__':

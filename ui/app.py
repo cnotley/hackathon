@@ -18,7 +18,7 @@ import io
 import base64
 import hashlib
 import threading
-from botocore.exceptions import ClientError, NoCredentialsError, BotoCoreError
+from botocore.exceptions import ClientError, NoCredentialsError
 import logging
 import os
 
@@ -38,16 +38,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-class AuthenticationError(Exception):
-    """Custom exception for authentication failures."""
-    pass
-
-
-class FileValidationError(Exception):
-    """Custom exception for file validation failures."""
-    pass
-
 
 class AWSCredentialsValidator:
     """Validates AWS credentials and permissions."""
@@ -228,22 +218,22 @@ class ProgressIndicator:
             with progress_col1:
                 if execution_status == 'RUNNING':
                     st.info("⏳ **Analysis in Progress**")
-                    progress_bar = st.progress(0.5)
+                    st.progress(0.5)
                     st.caption("Processing your invoice through the audit pipeline...")
                     
                 elif execution_status == 'SUCCEEDED':
                     st.success("✅ **Analysis Complete**")
-                    progress_bar = st.progress(1.0)
+                    st.progress(1.0)
                     st.caption("All audit steps completed successfully!")
                     
                 elif execution_status == 'FAILED':
                     st.error("❌ **Analysis Failed**")
-                    progress_bar = st.progress(0.0)
+                    st.progress(0.0)
                     st.caption("Error occurred during processing. Check details below.")
                     
                 else:
                     st.warning(f"📋 **Status: {execution_status}**")
-                    progress_bar = st.progress(0.3)
+                    st.progress(0.3)
             
             with progress_col2:
                 # Auto-refresh toggle
@@ -499,66 +489,6 @@ class MSAInvoiceAuditor:
         except ClientError as e:
             st.error(f"Error listing pending approvals: {str(e)}")
             return []
-
-    def get_hitl_flags(self, execution_arn: str) -> Dict[str, Any]:
-        flags: Dict[str, Any] = {}
-        try:
-            status = self.stepfunctions_client.describe_execution(executionArn=execution_arn)
-            output = status.get('output')
-            if output:
-                payload = json.loads(output)
-                flags = payload.get('discrepancy_analysis') or payload.get('comparison', {}).get('discrepancy_analysis', {})
-        except ClientError as e:
-            logger.error(f"Error fetching execution details: {e}")
-        if flags:
-            return flags
-        try:
-            response = self.s3_client.list_objects_v2(
-                Bucket=self.ingestion_bucket,
-                Prefix="approvals/"
-            )
-            if 'Contents' in response:
-                for obj in response['Contents']:
-                    approval_obj = self.s3_client.get_object(Bucket=self.ingestion_bucket, Key=obj['Key'])
-                    data = json.loads(approval_obj['Body'].read())
-                    if data.get('status') == 'pending_approval':
-                        return data.get('discrepancy_summary', {})
-        except ClientError as e:
-            logger.error(f"Error reading approval flags from S3: {e}")
-        return {}
-
-    def submit_hitl_decision(self, session_id: str, approved: bool, task_token: Optional[str] = None, comments: str = "") -> None:
-        if task_token:
-            try:
-                if approved:
-                    self.stepfunctions_client.send_task_success(
-                        taskToken=task_token,
-                        output=json.dumps({'decision': 'approved', 'comments': comments})
-                    )
-                else:
-                    self.stepfunctions_client.send_task_failure(
-                        taskToken=task_token,
-                        error='Rejected',
-                        cause=comments or 'User rejected discrepancies'
-                    )
-            except ClientError as e:
-                logger.error(f"Failed to signal Step Functions: {e}")
-        else:
-            payload = {
-                'action': 'hitl_approval',
-                'session_id': session_id,
-                'approved': approved,
-                'comments': comments
-            }
-            lambda_client = boto3.client('lambda')
-            try:
-                lambda_client.invoke(
-                    FunctionName=os.getenv('AGENT_LAMBDA_NAME', 'agent-lambda'),
-                    InvocationType='Event',
-                    Payload=json.dumps(payload)
-                )
-            except ClientError as e:
-                logger.error(f"Failed to submit HITL decision via Lambda fallback: {e}")
 
 def main():
     """Enhanced main Streamlit application with authentication and validation."""

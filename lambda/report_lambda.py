@@ -17,7 +17,7 @@ import logging
 from decimal import Decimal
 from io import BytesIO
 import openpyxl
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils.dataframe import dataframe_to_rows
 import markdown
 from botocore.exceptions import ClientError
@@ -551,70 +551,12 @@ class ExcelReportGenerator:
         return output_buffer.getvalue()
 
 
-class PDFConverter:
-    """Converts reports to PDF format."""
-    
-    def __init__(self):
-        # Configure wkhtmltopdf options
-        self.pdf_options = {
-            'page-size': 'Letter',
-            'margin-top': '0.75in',
-            'margin-right': '0.75in',
-            'margin-bottom': '0.75in',
-            'margin-left': '0.75in',
-            'encoding': "UTF-8",
-            'no-outline': None,
-            'enable-local-file-access': None
-        }
-    
-    def markdown_to_pdf(self, markdown_content: str) -> bytes:
-        """Convert Markdown content to PDF."""
-        try:
-            # Convert Markdown to HTML
-            html_content = markdown.markdown(markdown_content, extensions=['tables', 'fenced_code'])
-            
-            # Add CSS styling
-            styled_html = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <style>
-                    body {{ font-family: Arial, sans-serif; line-height: 1.6; margin: 0; padding: 20px; }}
-                    h1 {{ color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }}
-                    h2 {{ color: #34495e; margin-top: 30px; }}
-                    h3 {{ color: #7f8c8d; }}
-                    table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
-                    th, td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
-                    th {{ background-color: #f2f2f2; font-weight: bold; }}
-                    .highlight {{ background-color: #fff3cd; padding: 10px; border-left: 4px solid #ffc107; }}
-                </style>
-            </head>
-            <body>
-                {html_content}
-            </body>
-            </html>
-            """
-            
-            # Convert HTML to PDF
-            pdf_content = subprocess.run(['wkhtmltopdf', '--quiet', '-', '-'], input=styled_html.encode(), capture_output=True, text=True).stdout
-            
-            logger.info("Successfully converted Markdown to PDF")
-            return pdf_content
-            
-        except Exception as e:
-            logger.error(f"Error converting Markdown to PDF: {str(e)}")
-            # Return empty bytes on error
-            return b''
-
-
 class ReportManager:
     """Main report management class."""
     
     def __init__(self):
         self.bedrock_generator = BedrockReportGenerator()
         self.excel_generator = ExcelReportGenerator()
-        self.pdf_converter = PDFConverter()
         self.s3_client = s3_client
         self.reports_bucket = REPORTS_BUCKET
     

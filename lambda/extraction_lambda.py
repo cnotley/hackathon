@@ -13,9 +13,8 @@ import time
 import uuid
 import re
 from datetime import datetime
-from typing import Dict, Any, List, Optional, Tuple, Set
+from typing import Dict, Any, List, Optional, Tuple
 from io import BytesIO
-import math
 import gc
 
 import boto3
@@ -482,18 +481,6 @@ class TextractProcessor:
                 
                 # Add rows with page tracking
                 for i, row in enumerate(continuation_rows[start_row:], start_row):
-                    # Enhanced row data with page information
-                    enhanced_row = {
-                        'cells': row,
-                        'metadata': {
-                            'page': page,
-                            'original_row_index': i,
-                            'merged_row_index': len(current_rows),
-                            'spans_pages': False,
-                            'source_table': continuation['table_block']['Id']
-                        }
-                    }
-                    
                     current_rows.append(row)  # Keep backward compatibility
                     row_page_mapping.append({
                         'row_index': len(current_rows) - 1,
@@ -697,7 +684,7 @@ class ExcelProcessor:
             }
             
             # Convert data to JSON-serializable format
-            for index, row in df.iterrows():
+            for _, row in df.iterrows():
                 row_data = {}
                 for col in df.columns:
                     value = row[col]
@@ -1010,14 +997,6 @@ Focus exclusively on labor-related content and ignore materials, consumables, or
             }
         }
     
-    def _is_labor_table(self, table: Dict[str, Any]) -> bool:
-        """Determine if table contains labor data using rules."""
-        table_text = self._table_to_text(table).lower()
-        materials_keywords = ['material', 'consumable', 'supply', 'equipment', 'component', 'item']
-        assert not any(keyword in table_text for keyword in materials_keywords), "Materials handling removed"
-        labor_keywords = ['name', 'worker', 'employee', 'rate', 'hours', 'labor', 'personnel']
-        return any(keyword in table_text for keyword in labor_keywords)
-
     def _extract_labor_data_rules(self, table: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Extract labor data using rule-based approach."""
         labor_data = []
@@ -1129,7 +1108,6 @@ class IntelligentExtractor:
     
     def __init__(self):
         self.textract_processor = TextractProcessor()
-        self.excel_processor = ExcelProcessor()
         self.bedrock_processor = BedrockProcessor()
         self.comprehend_processor = ComprehendProcessor()
         self.chunker = SemanticChunker()
@@ -1357,8 +1335,6 @@ class SemanticChunker:
                 ch['metadata']['overlap_from_previous'] = overlap_len
             overlapped_chunks.append(ch)
         return overlapped_chunks
-        
-        return chunks
     
     def _chunk_tables(self, tables: List[Dict[str, Any]], file_metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Chunk tables individually."""

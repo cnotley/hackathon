@@ -377,15 +377,6 @@ class MockBedrockProcessor:
             })
         return normalized_rows
     
-    def _detect_table_type(self, table: Dict[str, Any]) -> str:
-        """Detect table type based on keywords."""
-        table_text = ' '.join(cell.get('text', '') for row in table.get('rows', []) for cell in row).lower()
-        labor_keywords = ['labor', 'worker', 'employee', 'rate', 'hours', 'rs', 'us', 'ss', 'su', 'en']
-        for keyword in labor_keywords:
-            if keyword in table_text:
-                return 'labor'
-        return 'unknown'
-    
     def _extract_currency(self, text: str) -> float:
         """Extract currency value from text."""
         import re

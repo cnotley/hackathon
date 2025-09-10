@@ -369,7 +369,7 @@ class TestReportManager:
     @mock_s3
     @patch('report_lambda.BedrockReportGenerator')
     @patch('report_lambda.ExcelReportGenerator')
-    def test_generate_comprehensive_report_success(self, mock_excel_generator, mock_bedrock_generator):
+    def test_generate_comprehensive_report_success(self, mock_excel_generator_cls, mock_bedrock_generator_cls):
         """Test successful comprehensive report generation."""
         # Setup S3 mock
         s3_client = boto3.client('s3', region_name='us-east-1')
@@ -378,20 +378,18 @@ class TestReportManager:
         # Mock generators
         mock_bedrock_instance = Mock()
         mock_excel_instance = Mock()
-        
-        mock_bedrock_generator.return_value = mock_bedrock_instance
-        mock_excel_instance.return_value = mock_excel_instance
-        
+        mock_bedrock_generator_cls.return_value = mock_bedrock_instance
+        mock_excel_generator_cls.return_value = mock_excel_instance
+
         # Configure mock responses
         mock_bedrock_instance.generate_markdown_report.return_value = "# Test Report\n\nContent here"
         mock_excel_instance.generate_excel_report.return_value = b'Excel content'
-        
+
         # Mock S3 uploads
         with patch.object(self.manager, '_upload_reports') as mock_upload:
             mock_upload.return_value = {
                 'markdown': 's3://bucket/report.md',
-                'excel': 's3://bucket/report.xlsx',
-                'pdf': 's3://bucket/report.pdf'
+                'excel': 's3://bucket/report.xlsx'
             }
             
             result = self.manager.generate_comprehensive_report(

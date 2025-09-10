@@ -106,16 +106,6 @@ class InvoiceAuditAgentStack(Stack):
 
     def _create_opensearch_domain(self) -> opensearch.Domain:
         """Create OpenSearch domain for Knowledge Base vector storage."""
-        # Create IAM role for OpenSearch
-        opensearch_role = iam.Role(
-            self,
-            "OpenSearchRole",
-            assumed_by=iam.ServicePrincipal("opensearch.amazonaws.com"),
-            managed_policies=[
-                iam.ManagedPolicy.from_aws_managed_policy_name("AmazonOpenSearchServiceFullAccess")
-            ]
-        )
-        
         # Create OpenSearch domain
         domain = opensearch.Domain(
             self,
@@ -230,31 +220,6 @@ class InvoiceAuditAgentStack(Stack):
                         vector_field="vector",
                         text_field="text",
                         metadata_field="metadata"
-                    )
-                )
-            )
-        )
-        
-        # Create Data Source for S3
-        data_source = bedrock.CfnDataSource(
-            self,
-            "InvoiceAuditDataSource",
-            knowledge_base_id=knowledge_base.attr_knowledge_base_id,
-            name="invoice-audit-s3-source",
-            description="S3 data source for extracted invoice data",
-            data_source_configuration=bedrock.CfnDataSource.DataSourceConfigurationProperty(
-                type="S3",
-                s3_configuration=bedrock.CfnDataSource.S3DataSourceConfigurationProperty(
-                    bucket_arn=self.ingestion_bucket.bucket_arn,
-                    inclusion_prefixes=["extracted/", "processed/", "kb-msas/"]
-                )
-            ),
-            vector_ingestion_configuration=bedrock.CfnDataSource.VectorIngestionConfigurationProperty(
-                chunking_configuration=bedrock.CfnDataSource.ChunkingConfigurationProperty(
-                    chunking_strategy="FIXED_SIZE",
-                    fixed_size_chunking_configuration=bedrock.CfnDataSource.FixedSizeChunkingConfigurationProperty(
-                        max_tokens=512,
-                        overlap_percentage=20
                     )
                 )
             )
@@ -410,8 +375,8 @@ class InvoiceAuditAgentStack(Stack):
             )
         )
         
-        # Create Agent Alias
-        agent_alias = bedrock.CfnAgentAlias(
+        # Create Agent Alias and store identifier for downstream consumers
+        self.agent_alias = bedrock.CfnAgentAlias(
             self,
             "InvoiceAuditAgentAlias",
             agent_id=agent.attr_agent_id,
@@ -479,7 +444,7 @@ class InvoiceAuditAgentStack(Stack):
             memory_size=512,
             environment={
                 "BEDROCK_AGENT_ID": self.bedrock_agent.attr_agent_id,
-                "BEDROCK_AGENT_ALIAS_ID": "TSTALIASID",  # Will be updated after alias creation
+                "BEDROCK_AGENT_ALIAS_ID": self.agent_alias.attr_agent_alias_id,
                 "KNOWLEDGE_BASE_ID": self.knowledge_base.attr_knowledge_base_id,
                 "MSA_RATES_TABLE": self.msa_rates_table.table_name,
                 "EXTRACTION_LAMBDA_NAME": self.extraction_lambda.function_name,

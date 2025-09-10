@@ -96,7 +96,6 @@ class MSARatesManager:
     
     def __init__(self):
         self.table = dynamodb.Table(MSA_RATES_TABLE)
-        self._rate_cache = {}  # Local cache for fallback
     
     @lru_cache(maxsize=128)
     def get_rate_for_labor_type(self, labor_type: str, location: str = 'default') -> Optional[float]:
@@ -409,25 +408,12 @@ Please verify these rates against your current MSA agreement as rates may vary b
             'note': 'Response generated using fallback logic due to Bedrock unavailability'
         }
     
-    def get_session_state(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """Get session state for UI continuity."""
-        return self._session_cache.get(session_id)
-    
     def clear_session(self, session_id: str) -> bool:
         """Clear session state for cleanup."""
         if session_id in self._session_cache:
             del self._session_cache[session_id]
             return True
         return False
-
-
-def _extract_discrepancy_flags(audit_results: Dict[str, Any]) -> List[Dict[str, Any]]:
-    flags: List[Dict[str, Any]] = []
-    if not audit_results:
-        return flags
-    for entry in audit_results.get('discrepancies', []) or []:
-        flags.append(entry)
-    return flags
 
 
 def call_extraction_lambda(bucket: str, key: str) -> Dict[str, Any]:
@@ -625,9 +611,16 @@ def handle_hitl_approval(event: Dict[str, Any]) -> Dict[str, Any]:
         session_id = event.get('session_id')
         execution_arn = event.get('execution_arn')
         comparison_result = event.get('comparison_result', {})
-        bucket = event.get('bucket')
-        key = event.get('key')
-        task_token = event.get('taskToken')
+        report_payload = {
+            "flags_data": {
+                "rate_variances": comparison_result.get("rate_variances", []),
+                "overtime_violations": comparison_result.get("overtime_violations", []),
+                "anomalies": comparison_result.get("anomalies", []),
+                "duplicates": comparison_result.get("duplicates", [])
+            },
+            "metadata": comparison_result.get("metadata", {}),
+            "extracted_data": extraction_result
+        }
 
         logger.info(f"Processing HITL approval for {bucket}/{key} (approved={approved})")
 
