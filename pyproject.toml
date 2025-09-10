@@ -1,0 +1,8 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "disaster-audit-proto"
+version = "0.1.0"
+description = "Disaster recovery invoice auditing prototype"
