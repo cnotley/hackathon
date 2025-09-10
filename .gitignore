@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.aws-sam/
+localstack/
+*.pdf
+!test_invoice.pdf
+.env
+.venv
+.DS_Store
