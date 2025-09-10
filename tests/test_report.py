@@ -715,6 +715,34 @@ class TestIntegrationScenarios:
         assert '$148,103.04' in str(as_analyzed)  # 148478.04 - 375.00
         assert '$375.00' in str(savings)
 
+    def test_project_summary_totals_match_requirements(self):
+        generator = ExcelReportGenerator()
+        flags = {"total_savings": 375.0}
+        metadata = {
+            "invoice_total": 148478.04,
+            "labor_total": 77000.0,
+            "material_total": 71478.04,
+        }
+        extracted = {"normalized_data": {"labor": []}}
+
+        workbook_bytes = generator._generate_fallback_excel(flags, metadata, extracted)
+        workbook = openpyxl.load_workbook(BytesIO(workbook_bytes))
+        summary_sheet = workbook['Project Summary']
+
+        totals = {}
+        for row in range(2, summary_sheet.max_row + 1):
+            category = summary_sheet.cell(row=row, column=1).value
+            if category == 'Total Project':
+                totals['as_presented'] = summary_sheet.cell(row=row, column=2).value
+                totals['as_analyzed'] = summary_sheet.cell(row=row, column=3).value
+                totals['savings'] = summary_sheet.cell(row=row, column=4).value
+                break
+
+        assert totals
+        assert '$148,478.04' in str(totals['as_presented'])
+        assert '$148,103.04' in str(totals['as_analyzed'])
+        assert '$375.00' in str(totals['savings'])
+
 
 class TestErrorHandling:
     """Test cases for error handling scenarios."""
@@ -752,3 +780,18 @@ class TestErrorHandling:
         assert result is not None
         workbook = openpyxl.load_workbook(BytesIO(result))
         assert 'Project Summary' in workbook.sheetnames
+
+    def test_excel_report_contains_as_analyzed_column(self):
+        generator = ExcelReportGenerator()
+        flags = {"total_savings": 375.0}
+        metadata = {"invoice_total": 148478.04, "labor_total": 77000.0}
+        extracted = {"normalized_data": {"labor": []}}
+
+        workbook_bytes = generator._generate_fallback_excel(flags, metadata, extracted)
+        workbook = openpyxl.load_workbook(BytesIO(workbook_bytes))
+        summary_sheet = workbook['Project Summary']
+
+        headers = [summary_sheet.cell(row=1, column=col).value for col in range(1, 5)]
+        assert headers[2] == 'As Analyzed'
+        labor_row = summary_sheet.cell(row=2, column=3).value
+        assert '$76,625.00' in str(labor_row)

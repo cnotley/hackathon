@@ -1,3 +1,4 @@
+import gc
 import json
 import logging
 import os
@@ -157,11 +158,20 @@ def handle_s3_event(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             file_processor = FileProcessor(bucket)
             file_info = file_processor.get_file_info(key)
             logger.info(f"File info: {file_info}")
+            validation = file_processor.validate_file(file_info)
+            if not validation['is_valid']:
+                results.append({
+                    'file': key,
+                    'status': 'error',
+                    'error': '; '.join(validation['errors']) or 'Validation failed'
+                })
+                continue
             batch_files.append({
                 'file_info': file_info,
                 'bucket': bucket,
                 'key': key,
-                'record': record
+                'record': record,
+                'validation': validation
             })
         except ValueError:
             raise

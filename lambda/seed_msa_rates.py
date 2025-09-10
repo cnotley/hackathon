@@ -21,9 +21,25 @@ logger.setLevel(os.getenv('LOG_LEVEL', 'INFO'))
 
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb')
-
-# Environment variables
 MSA_RATES_TABLE = os.getenv('MSA_RATES_TABLE', 'msa-rates')
+CREATE_TABLE_IF_MISSING = os.getenv('CREATE_MSA_TABLE_IF_MISSING', 'false').lower() == 'true'
+
+def _create_table_if_missing(dynamodb_resource, table_name):
+    existing_tables = dynamodb_resource.meta.client.list_tables().get('TableNames', [])
+    if table_name in existing_tables:
+        return
+    dynamodb_resource.create_table(
+        TableName=table_name,
+        KeySchema=[
+            {'AttributeName': 'rate_id', 'KeyType': 'HASH'}
+        ],
+        AttributeDefinitions=[
+            {'AttributeName': 'rate_id', 'AttributeType': 'S'}
+        ],
+        BillingMode='PAY_PER_REQUEST'
+    )
+    waiter = dynamodb_resource.meta.client.get_waiter('table_exists')
+    waiter.wait(TableName=table_name)
 
 def seed_msa_rates() -> Dict[str, Any]:
     """Seed MSA rates table with standard rates like RS:70 as mentioned in requirements."""
@@ -37,6 +53,10 @@ def seed_msa_rates() -> Dict[str, Any]:
                 break
             except ClientError as e:
                 if e.response['Error']['Code'] == 'ResourceNotFoundException':
+                    if CREATE_TABLE_IF_MISSING:
+                        _create_table_if_missing(dynamodb, MSA_RATES_TABLE)
+                        table = dynamodb.Table(MSA_RATES_TABLE)
+                        continue
                     logger.info(f"DynamoDB table {MSA_RATES_TABLE} not found (attempt {attempt + 1}/5); retrying in 5s...")
                     time.sleep(5)
                 else:
@@ -288,13 +308,18 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             logger.info(f"DynamoDB table {MSA_RATES_TABLE} is accessible")
         except ClientError as e:
             if e.response['Error']['Code'] == 'ResourceNotFoundException':
-                return {
-                    'statusCode': 404,
-                    'body': json.dumps({
-                        'error': f"DynamoDB table {MSA_RATES_TABLE} not found",
-                        'suggestion': 'Deploy the infrastructure first to create the table'
-                    })
-                }
+                if CREATE_TABLE_IF_MISSING:
+                    _create_table_if_missing(dynamodb, MSA_RATES_TABLE)
+                    table = dynamodb.Table(MSA_RATES_TABLE)
+                    table.load()
+                else:
+                    return {
+                        'statusCode': 404,
+                        'body': json.dumps({
+                            'error': f"DynamoDB table {MSA_RATES_TABLE} not found",
+                            'suggestion': 'Deploy the infrastructure first to create the table'
+                        })
+                    }
             else:
                 raise
         

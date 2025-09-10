@@ -507,5 +507,30 @@ class TestIntegrationScenarios:
         assert len(audit_results['discrepancies']) == 0
 
 
+class TestAnomalyDetection:
+    def test_audit_uses_sagemaker_for_anomaly_detection(self, monkeypatch):
+        with patch.dict(os.environ, {
+            'ANOMALY_SAGEMAKER_ENDPOINT': 'anomaly-endpoint'
+        }):
+            manager = InvoiceAuditor()
+            fake_client = Mock()
+            fake_client.invoke_endpoint.return_value = {
+                'Body': MagicMock(read=lambda: json.dumps({'anomalies': [{'item': 'OT hours', 'score': 0.95}]}).encode())
+            }
+            monkeypatch.setattr(manager, 'sagemaker_runtime', fake_client)
+
+            extracted_data = {
+                'normalized_data': {
+                    'labor': [
+                        {'name': 'Smith, John', 'type': 'RS', 'unit_price': 70.0, 'total_hours': 42.0}
+                    ]
+                }
+            }
+
+            manager._detect_anomalies(extracted_data)
+
+            fake_client.invoke_endpoint.assert_called_once()
+
+
 if __name__ == '__main__':
     pytest.main([__file__])
