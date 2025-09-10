@@ -73,6 +73,51 @@ A comprehensive AI-powered serverless AWS solution for automated invoice file in
 - **Python** 3.11 or later
 - **AWS CDK** 2.100.0 or later
 
+#### Local CDK toolchain setup
+
+```bash
+# macOS (Homebrew)
+brew install node
+
+# Windows (PowerShell / winget)
+winget install OpenJS.NodeJS.LTS
+
+# Linux (Debian/Ubuntu)
+sudo apt-get update && sudo apt-get install -y nodejs npm
+
+# Install the AWS CDK CLI globally (all platforms)
+npm install -g aws-cdk
+
+# Python dependencies (inside your virtual environment)
+pip install -r requirements.txt
+
+# Verify the CLI toolchain
+cdk --version
+```
+
+Configure AWS credentials and default CDK environment variables:
+
+```bash
+aws configure
+export CDK_DEFAULT_ACCOUNT="YOUR_AWS_ACCOUNT_ID"
+export CDK_DEFAULT_REGION="us-east-1"
+```
+
+The repository expects the CDK entry point to be defined in `cdk.json` as:
+
+```json
+{
+  "app": "python app.py"
+}
+```
+
+After installing the prerequisites, validate the toolchain from the project root:
+
+```bash
+cdk ls
+cdk synth > synth-output.yaml
+```
+
 ### Supported File Types
 
 | Format | Extensions | Max Size | Priority |

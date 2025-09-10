@@ -38,6 +38,14 @@ MSA_RATES_TABLE = os.getenv('MSA_RATES_TABLE', 'msa-rates')
 EXTRACTION_LAMBDA_NAME = os.getenv('EXTRACTION_LAMBDA_NAME', 'extraction-lambda')
 BUCKET_NAME = os.getenv('BUCKET_NAME')
 GUARDRAIL_ID = os.getenv('GUARDRAIL_ID', 'default-guardrail')
+DEFAULT_EFFECTIVE_DATE = os.getenv('MSA_DEFAULT_EFFECTIVE_DATE', '2024-01-01')
+
+
+def _rate_key(labor_type: str, location: str) -> Dict[str, str]:
+    return {
+        'rate_id': f"{str(labor_type).upper()}#{location}",
+        'effective_date': DEFAULT_EFFECTIVE_DATE
+    }
 
 
 class InputValidator:
@@ -101,12 +109,7 @@ class MSARatesManager:
     def get_rate_for_labor_type(self, labor_type: str, location: str = 'default') -> Optional[float]:
         """Get the standard MSA rate for a specific labor type."""
         try:
-            response = self.table.get_item(
-                Key={
-                    'labor_type': labor_type,
-                    'location': location
-                }
-            )
+            response = self.table.get_item(Key=_rate_key(labor_type, location))
             
             if 'Item' in response:
                 return float(response['Item']['standard_rate'])
@@ -124,12 +127,7 @@ class MSARatesManager:
     def get_overtime_threshold(self, labor_type: str = 'default') -> float:
         """Get overtime threshold hours per week."""
         try:
-            response = self.table.get_item(
-                Key={
-                    'labor_type': labor_type,
-                    'location': 'overtime_rules'
-                }
-            )
+            response = self.table.get_item(Key=_rate_key(labor_type, 'overtime_rules'))
             
             if 'Item' in response:
                 return float(response['Item'].get('weekly_threshold', 40.0))

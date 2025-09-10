@@ -20,6 +20,7 @@ from aws_cdk import (
     aws_ecr as ecr,
     aws_ec2 as ec2,
     aws_logs as logs,
+    custom_resources as cr,
     CfnOutput,
     Duration,
     RemovalPolicy
@@ -72,92 +73,114 @@ class MSAInvoiceAuditFullStack(Stack):
         # Create outputs
         self._create_outputs()
     
-    def _create_s3_buckets(self) -> None:
-        """Create all required S3 buckets."""
-        # Ingestion bucket for uploaded files
-        self.ingestion_bucket = s3.Bucket(
+    def _bucket_name(self, purpose: str) -> str:
+        stack_id = self.stack_name.lower().replace("_", "-")
+        return f"{stack_id}-{purpose}-{self.account}-{self.region}"
+
+    def _create_bucket(self, logical_id: str, purpose: str) -> s3.Bucket:
+        return s3.Bucket(
             self,
-            "MSAIngestionBucket",
-            bucket_name=f"msa-invoice-ingestion-{self.account}-{self.region}",
-            versioning=s3.BucketVersioning.ENABLED,
+            logical_id,
+            bucket_name=self._bucket_name(purpose),
+            versioned=True,
             encryption=s3.BucketEncryption.S3_MANAGED,
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
+            removal_policy=RemovalPolicy.DESTROY,
             lifecycle_rules=[
                 s3.LifecycleRule(
-                    id="DeleteOldFiles",
-                    expiration=Duration.days(90),
-                    abort_incomplete_multipart_upload_after=Duration.days(7)
+                    expiration=Duration.days(90)
                 )
             ]
         )
-        
-        # Reports bucket for generated reports
-        self.reports_bucket = s3.Bucket(
-            self,
-            "MSAReportsBucket",
-            bucket_name=f"msa-invoice-reports-{self.account}-{self.region}",
-            versioning=s3.BucketVersioning.ENABLED,
-            encryption=s3.BucketEncryption.S3_MANAGED,
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            removal_policy=RemovalPolicy.DESTROY,
-            auto_delete_objects=True
-        )
-        
-        # Templates bucket for Excel templates
-        self.templates_bucket = s3.Bucket(
-            self,
-            "MSATemplatesBucket",
-            bucket_name=f"msa-invoice-templates-{self.account}-{self.region}",
-            encryption=s3.BucketEncryption.S3_MANAGED,
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            removal_policy=RemovalPolicy.DESTROY,
-            auto_delete_objects=True
-        )
-        
-        # Knowledge base bucket for MSA documents
-        self.knowledge_base_bucket = s3.Bucket(
-            self,
-            "MSAKnowledgeBaseBucket",
-            bucket_name=f"msa-knowledge-base-{self.account}-{self.region}",
-            encryption=s3.BucketEncryption.S3_MANAGED,
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            removal_policy=RemovalPolicy.DESTROY,
-            auto_delete_objects=True
-        )
+
+    def _create_s3_buckets(self) -> None:
+        """Create all required S3 buckets."""
+        self.ingestion_bucket = self._create_bucket("MSAIngestionBucket", "ingestion")
+        self.reports_bucket = self._create_bucket("MSAReportsBucket", "reports")
+        self.templates_bucket = self._create_bucket("MSATemplatesBucket", "templates")
+        self.knowledge_base_bucket = self._create_bucket("MSAKnowledgeBaseBucket", "knowledge")
     
     def _create_dynamodb_table(self) -> None:
         """Create DynamoDB table for MSA rates."""
+        table_name = f"{self._bucket_name('msa-rates')}"
         self.msa_rates_table = dynamodb.Table(
             self,
             "MSARatesTable",
-            table_name="msa-rates",
+            table_name=table_name,
             partition_key=dynamodb.Attribute(
-                name="labor_type",
+                name="rate_id",
                 type=dynamodb.AttributeType.STRING
             ),
             sort_key=dynamodb.Attribute(
-                name="location",
+                name="effective_date",
                 type=dynamodb.AttributeType.STRING
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
-            encryption=dynamodb.TableEncryption.AWS_MANAGED,
             removal_policy=RemovalPolicy.DESTROY,
             point_in_time_recovery=True
         )
-        
-        # Add GSI for category-based queries
-        self.msa_rates_table.add_global_secondary_index(
-            index_name="CategoryIndex",
-            partition_key=dynamodb.Attribute(
-                name="category",
-                type=dynamodb.AttributeType.STRING
+
+        self._seed_msa_rates()
+
+    def _seed_msa_rates(self) -> None:
+        """Seed DynamoDB table with baseline rates using a custom resource."""
+        seed_function = _lambda.Function(
+            self,
+            "MSARateSeedFunction",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="index.handler",
+            code=_lambda.Code.from_inline(
+                """
+import boto3
+from decimal import Decimal
+
+DEFAULT_DATE = "2024-01-01"
+
+def handler(event, _context):
+    physical_id = "msa-rate-seed"
+    if event.get("RequestType") == "Delete":
+        return {"PhysicalResourceId": physical_id}
+
+    table_name = event["ResourceProperties"]["TableName"]
+    dynamodb = boto3.resource("dynamodb")
+    table = dynamodb.Table(table_name)
+
+    sample_rates = [
+        {"rate_id": "RS#default", "effective_date": DEFAULT_DATE, "labor_type": "RS", "location": "default", "standard_rate": "70.00", "description": "Regular Skilled Labor"},
+        {"rate_id": "US#default", "effective_date": DEFAULT_DATE, "labor_type": "US", "location": "default", "standard_rate": "85.00", "description": "Unskilled Supervisor"},
+        {"rate_id": "SS#default", "effective_date": DEFAULT_DATE, "labor_type": "SS", "location": "default", "standard_rate": "95.00", "description": "Skilled Supervisor"},
+        {"rate_id": "SU#default", "effective_date": DEFAULT_DATE, "labor_type": "SU", "location": "default", "standard_rate": "110.00", "description": "Senior Supervisor"},
+        {"rate_id": "EN#default", "effective_date": DEFAULT_DATE, "labor_type": "EN", "location": "default", "standard_rate": "125.00", "description": "Engineer"},
+        {"rate_id": "default#overtime_rules", "effective_date": DEFAULT_DATE, "labor_type": "default", "location": "overtime_rules", "weekly_threshold": "40", "description": "Standard overtime threshold"},
+        {"rate_id": "SU#ratio_rules", "effective_date": DEFAULT_DATE, "labor_type": "SU", "location": "ratio_rules", "max_ratio": "6"}
+    ]
+
+    for item in sample_rates:
+        formatted = {k: (Decimal(str(v)) if k in {"standard_rate", "weekly_threshold", "max_ratio"} else v) for k, v in item.items()}
+        table.put_item(Item=formatted)
+
+    return {"PhysicalResourceId": physical_id}
+                """
             ),
-            sort_key=dynamodb.Attribute(
-                name="subcategory",
-                type=dynamodb.AttributeType.STRING
-            )
+            timeout=Duration.minutes(5)
+        )
+
+        self.msa_rates_table.grant_write_data(seed_function)
+
+        provider = cr.Provider(
+            self,
+            "MSARateSeedProvider",
+            on_event_handler=seed_function
+        )
+
+        cr.CustomResource(
+            self,
+            "MSARateSeedResource",
+            service_token=provider.service_token,
+            properties={
+                "TableName": self.msa_rates_table.table_name
+            }
         )
     
     def _create_lambda_layers(self) -> None:
@@ -185,192 +208,141 @@ class MSAInvoiceAuditFullStack(Stack):
     
     def _create_lambda_functions(self) -> None:
         """Create all Lambda functions."""
-        # Base IAM role for Lambda functions
-        lambda_base_role = iam.Role(
-            self,
-            "MSALambdaBaseRole",
-            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
-            managed_policies=[
-                iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaBasicExecutionRole")
-            ]
-        )
-        
-        # Add S3 permissions
-        lambda_base_role.add_to_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "s3:GetObject",
-                    "s3:PutObject",
-                    "s3:DeleteObject",
-                    "s3:ListBucket"
-                ],
-                resources=[
-                    self.ingestion_bucket.bucket_arn,
-                    f"{self.ingestion_bucket.bucket_arn}/*",
-                    self.reports_bucket.bucket_arn,
-                    f"{self.reports_bucket.bucket_arn}/*",
-                    self.templates_bucket.bucket_arn,
-                    f"{self.templates_bucket.bucket_arn}/*",
-                    self.knowledge_base_bucket.bucket_arn,
-                    f"{self.knowledge_base_bucket.bucket_arn}/*"
+
+        def create_lambda_role() -> iam.Role:
+            role = iam.Role(
+                self,
+                "MSALambdaBaseRole",
+                assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+                managed_policies=[
+                    iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaBasicExecutionRole")
                 ]
             )
-        )
-        
-        # Add DynamoDB permissions
-        lambda_base_role.add_to_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "dynamodb:GetItem",
-                    "dynamodb:PutItem",
-                    "dynamodb:UpdateItem",
-                    "dynamodb:DeleteItem",
-                    "dynamodb:Query",
-                    "dynamodb:Scan"
-                ],
-                resources=[
-                    self.msa_rates_table.table_arn,
-                    f"{self.msa_rates_table.table_arn}/index/*"
-                ]
-            )
-        )
-        
-        # Add Textract permissions
-        lambda_base_role.add_to_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "textract:DetectDocumentText",
-                    "textract:AnalyzeDocument",
-                    "textract:StartDocumentAnalysis",
-                    "textract:GetDocumentAnalysis"
-                ],
-                resources=["*"]
-            )
-        )
-        
-        # Add Bedrock permissions
-        lambda_base_role.add_to_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "bedrock:InvokeAgent",
-                    "bedrock:InvokeModel",
-                    "bedrock:GetAgent",
-                    "bedrock:ListAgents"
-                ],
-                resources=["*"]
-            )
-        )
-        
-        self.ingestion_lambda = _lambda.Function(
-            self,
-            "MSAIngestionLambda",
-            runtime=_lambda.Runtime.PYTHON_3_11,
-            handler="ingestion_lambda.lambda_handler",
-            code=_lambda.Code.from_asset(
-                "lambda",
-                bundling=_lambda.BundlingOptions(
-                    image=_lambda.Runtime.PYTHON_3_11.bundling_image,
-                    command=[
-                        "bash",
-                        "-c",
-                        "set -euo pipefail; cd /asset-input && pip install --platform manylinux2014_x86_64 --only-binary=:all: -r ../requirements.txt -t /asset-output && cp -au . /asset-output"
+
+            role.add_to_policy(
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    actions=["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
+                    resources=[
+                        self.ingestion_bucket.bucket_arn,
+                        f"{self.ingestion_bucket.bucket_arn}/*",
+                        self.reports_bucket.bucket_arn,
+                        f"{self.reports_bucket.bucket_arn}/*",
+                        self.templates_bucket.bucket_arn,
+                        f"{self.templates_bucket.bucket_arn}/*",
+                        self.knowledge_base_bucket.bucket_arn,
+                        f"{self.knowledge_base_bucket.bucket_arn}/*"
                     ]
                 )
-            ),
-            role=lambda_base_role,
-            timeout=Duration.minutes(15),
-            memory_size=1024,
-            layers=[self.common_layer],
-            environment={
+            )
+
+            role.add_to_policy(
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    actions=[
+                        "dynamodb:GetItem",
+                        "dynamodb:PutItem",
+                        "dynamodb:UpdateItem",
+                        "dynamodb:DeleteItem",
+                        "dynamodb:Query",
+                        "dynamodb:Scan"
+                    ],
+                    resources=[self.msa_rates_table.table_arn]
+                )
+            )
+
+            role.add_to_policy(
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    actions=[
+                        "textract:DetectDocumentText",
+                        "textract:AnalyzeDocument",
+                        "textract:StartDocumentAnalysis",
+                        "textract:GetDocumentAnalysis"
+                    ],
+                    resources=["*"]
+                )
+            )
+
+            role.add_to_policy(
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    actions=[
+                        "bedrock:InvokeAgent",
+                        "bedrock:InvokeModel",
+                        "bedrock:GetAgent",
+                        "bedrock:ListAgents"
+                    ],
+                    resources=["*"]
+                )
+            )
+
+            return role
+
+        lambda_base_role = create_lambda_role()
+
+        bundling = _lambda.BundlingOptions(
+            image=_lambda.Runtime.PYTHON_3_11.bundling_image,
+            command=[
+                "bash",
+                "-c",
+                "set -eux; pip install --platform manylinux2014_x86_64 --only-binary=:all: -r ../requirements.txt -t /asset-output; cp -au . /asset-output"
+            ]
+        )
+
+        def create_function(logical_id: str, handler: str, env: dict, memory: int = 1024, timeout_minutes: int = 15) -> _lambda.Function:
+            return _lambda.Function(
+                self,
+                logical_id,
+                runtime=_lambda.Runtime.PYTHON_3_11,
+                handler=handler,
+                code=_lambda.Code.from_asset("lambda", bundling=bundling),
+                role=lambda_base_role,
+                timeout=Duration.minutes(timeout_minutes),
+                memory_size=memory,
+                layers=[self.common_layer],
+                environment=env
+            )
+
+        default_effective_date = "2024-01-01"
+
+        self.ingestion_lambda = create_function(
+            "MSAIngestionLambda",
+            "ingestion_lambda.lambda_handler",
+            {
                 "BUCKET_NAME": self.ingestion_bucket.bucket_name
             }
         )
-        
-        # Agent Lambda
-        self.agent_lambda = _lambda.Function(
-            self,
+
+        self.agent_lambda = create_function(
             "MSAAgentLambda",
-            runtime=_lambda.Runtime.PYTHON_3_11,
-            handler="agent_lambda.lambda_handler",
-            code=_lambda.Code.from_asset(
-                "lambda",
-                exclude=["layers/**"],
-                bundling=_lambda.BundlingOptions(
-                    image=_lambda.Runtime.PYTHON_3_11.bundling_image,
-                    command=[
-                        "bash",
-                        "-c",
-                        "set -euo pipefail; cd /asset-input && pip install --platform manylinux2014_x86_64 --only-binary=:all: -r ../requirements.txt -t /asset-output && cp -au . /asset-output"
-                    ]
-                )
-            ),
-            role=lambda_base_role,
-            timeout=Duration.minutes(15),
-            memory_size=2048,
-            layers=[self.common_layer],
-            environment={
+            "agent_lambda.lambda_handler",
+            {
                 "MSA_RATES_TABLE": self.msa_rates_table.table_name,
-                "KNOWLEDGE_BASE_BUCKET": self.knowledge_base_bucket.bucket_name
-            }
+                "KNOWLEDGE_BASE_BUCKET": self.knowledge_base_bucket.bucket_name,
+                "MSA_DEFAULT_EFFECTIVE_DATE": default_effective_date
+            },
+            memory=2048
         )
-        
-        # Comparison Lambda
-        self.comparison_lambda = _lambda.Function(
-            self,
+
+        self.comparison_lambda = create_function(
             "MSAComparisonLambda",
-            runtime=_lambda.Runtime.PYTHON_3_11,
-            handler="comparison_lambda.lambda_handler",
-            code=_lambda.Code.from_asset(
-                "lambda",
-                exclude=["layers/**"],
-                bundling=_lambda.BundlingOptions(
-                    image=_lambda.Runtime.PYTHON_3_11.bundling_image,
-                    command=[
-                        "bash",
-                        "-c",
-                        "set -euo pipefail; cd /asset-input && pip install --platform manylinux2014_x86_64 --only-binary=:all: -r ../requirements.txt -t /asset-output && cp -au . /asset-output"
-                    ]
-                )
-            ),
-            role=lambda_base_role,
-            timeout=Duration.minutes(10),
-            memory_size=1024,
-            layers=[self.common_layer],
-            environment={
-                "MSA_RATES_TABLE": self.msa_rates_table.table_name
-            }
+            "comparison_lambda.lambda_handler",
+            {
+                "MSA_RATES_TABLE": self.msa_rates_table.table_name,
+                "MSA_DEFAULT_EFFECTIVE_DATE": default_effective_date
+            },
+            timeout_minutes=10
         )
-        
-        # Report Lambda
-        self.report_lambda = _lambda.Function(
-            self,
+
+        self.report_lambda = create_function(
             "MSAReportLambda",
-            runtime=_lambda.Runtime.PYTHON_3_11,
-            handler="report_lambda.lambda_handler",
-            code=_lambda.Code.from_asset(
-                "lambda",
-                exclude=["layers/**"],
-                bundling=_lambda.BundlingOptions(
-                    image=_lambda.Runtime.PYTHON_3_11.bundling_image,
-                    command=[
-                        "bash",
-                        "-c",
-                        "set -euo pipefail; cd /asset-input && pip install --platform manylinux2014_x86_64 --only-binary=:all: -r ../requirements.txt -t /asset-output && cp -au . /asset-output"
-                    ]
-                )
-            ),
-            role=lambda_base_role,
-            timeout=Duration.minutes(15),
-            memory_size=2048,
-            layers=[self.common_layer],
-            environment={
+            "report_lambda.lambda_handler",
+            {
                 "REPORTS_BUCKET": self.reports_bucket.bucket_name,
                 "TEMPLATES_BUCKET": self.templates_bucket.bucket_name
-            }
+            },
+            memory=2048
         )
     
     def _create_sagemaker_endpoint(self) -> None:
@@ -570,13 +542,9 @@ class MSAInvoiceAuditFullStack(Stack):
         sfn_role = iam.Role(
             self,
             "MSAStepFunctionsRole",
-            assumed_by=iam.ServicePrincipal("states.amazonaws.com"),
-            managed_policies=[
-                iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSStepFunctionsFullAccess")
-            ]
+            assumed_by=iam.ServicePrincipal("states.amazonaws.com")
         )
-        
-        # Add Lambda invoke permissions
+
         sfn_role.add_to_policy(
             iam.PolicyStatement(
                 effect=iam.Effect.ALLOW,
@@ -589,75 +557,95 @@ class MSAInvoiceAuditFullStack(Stack):
                 ]
             )
         )
-        
-        # Define Step Functions tasks
+
         extract_task = sfn_tasks.LambdaInvoke(
             self,
-            "ExtractDataTask",
+            "ExtractData",
             lambda_function=self.ingestion_lambda,
             payload=sfn.TaskInput.from_object({
-                "task": "extract",
-                "input": {
-                    "file_info": {
-                        "key.$": "$.key",
-                        "size": 0,
-                        "extension.$": "States.Format('.{}', States.ArrayGetItem(States.StringSplit($.key, '.'), -1))"
-                    },
-                    "bucket.$": "$.bucket"
-                }
+                "bucket.$": "$.bucket",
+                "key.$": "$.key"
             }),
             result_path="$.extraction"
         )
-        
+
         agent_task = sfn_tasks.LambdaInvoke(
             self,
-            "InvokeAgentTask",
+            "InvokeAgent",
             lambda_function=self.agent_lambda,
             payload=sfn.TaskInput.from_object({
                 "extracted_data.$": "$.extraction.Payload",
                 "bucket.$": "$.bucket",
                 "key.$": "$.key"
             }),
-            result_path="$.agent_analysis"
+            result_path="$.agent"
         )
-        
+
         comparison_task = sfn_tasks.LambdaInvoke(
             self,
-            "CompareRatesTask",
+            "CompareRates",
             lambda_function=self.comparison_lambda,
             payload=sfn.TaskInput.from_object({
                 "extracted_data.$": "$.extraction.Payload",
-                "agent_analysis.$": "$.agent_analysis.Payload",
+                "agent_analysis.$": "$.agent.Payload",
                 "bucket.$": "$.bucket",
                 "key.$": "$.key"
             }),
             result_path="$.comparison"
         )
-        
+
+        human_approval = sfn_tasks.LambdaInvoke(
+            self,
+            "AwaitHumanApproval",
+            lambda_function=self.agent_lambda,
+            integration_pattern=sfn.IntegrationPattern.WAIT_FOR_TASK_TOKEN,
+            payload=sfn.TaskInput.from_object({
+                "action": "hitl_approval",
+                "flags.$": "$.comparison.Payload.discrepancy_analysis",
+                "taskToken": sfn.JsonPath.task_token
+            }),
+            result_path="$.approval"
+        )
+
         report_task = sfn_tasks.LambdaInvoke(
             self,
-            "GenerateReportTask",
+            "GenerateReport",
             lambda_function=self.report_lambda,
             payload=sfn.TaskInput.from_object({
                 "extracted_data.$": "$.extraction.Payload",
-                "agent_analysis.$": "$.agent_analysis.Payload",
+                "agent_analysis.$": "$.agent.Payload",
                 "comparison_results.$": "$.comparison.Payload",
                 "bucket.$": "$.bucket",
                 "key.$": "$.key"
             }),
             result_path="$.report"
         )
-        
-        # Define workflow
-        definition = extract_task.next(
-            agent_task.next(
-                comparison_task.next(
-                    report_task
-                )
-            )
+
+        agent_wait = sfn.Wait(
+            self,
+            "AgentStatusWait",
+            time=sfn.WaitTime.duration(Duration.seconds(30))
         )
-        
-        # Create Step Functions state machine
+
+        check_agent_status = sfn.Choice(self, "CheckAgentStatus")
+        check_agent_status.when(
+            sfn.Condition.string_equals("$.agent.Payload.status", "pending_approval"),
+            agent_wait.next(agent_task)
+        )
+        check_agent_status.otherwise(comparison_task)
+
+        check_discrepancies = sfn.Choice(self, "DiscrepanciesPresent")
+        check_discrepancies.when(
+            sfn.Condition.number_greater_than("$.comparison.Payload.discrepancy_analysis.summary.total_discrepancies", 0),
+            human_approval
+        )
+        check_discrepancies.otherwise(report_task)
+
+        human_approval.next(report_task)
+
+        definition = extract_task.next(agent_task).next(check_agent_status)
+        comparison_task.next(check_discrepancies)
+
         self.step_function = sfn.StateMachine(
             self,
             "MSAInvoiceAuditWorkflow",

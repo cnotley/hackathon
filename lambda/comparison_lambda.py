@@ -49,6 +49,7 @@ GUARDRAIL_ID = os.getenv('GUARDRAIL_ID', 'default-guardrail')
 SAGEMAKER_ENDPOINT = os.getenv('SAGEMAKER_ENDPOINT', 'invoice-anomaly-detection')
 BUCKET_NAME = os.getenv('BUCKET_NAME')
 KNOWLEDGE_BASE_ID = os.getenv('KNOWLEDGE_BASE_ID')
+DEFAULT_EFFECTIVE_DATE = os.getenv('MSA_DEFAULT_EFFECTIVE_DATE', '2024-01-01')
 
 # Configuration constants
 VARIANCE_THRESHOLD = 0.05  # 5% variance threshold
@@ -145,6 +146,13 @@ class DataValidator:
         return validation_results
     
 
+def _rate_key(labor_type: str, location: str) -> Dict[str, str]:
+    return {
+        'rate_id': f"{str(labor_type).upper()}#{location}",
+        'effective_date': DEFAULT_EFFECTIVE_DATE
+    }
+
+
 class MSARatesComparator:
     """Handles comparison of extracted data against MSA rates."""
     
@@ -160,12 +168,7 @@ class MSARatesComparator:
             return self.rates_cache[cache_key]
         
         try:
-            response = self.table.get_item(
-                Key={
-                    'labor_type': labor_type,
-                    'location': location
-                }
-            )
+            response = self.table.get_item(Key=_rate_key(labor_type, location))
             
             if 'Item' in response:
                 rate = float(response['Item']['standard_rate'])
@@ -185,12 +188,7 @@ class MSARatesComparator:
     def get_overtime_threshold(self, labor_type: str = 'default') -> float:
         """Get overtime threshold for labor type."""
         try:
-            response = self.table.get_item(
-                Key={
-                    'labor_type': labor_type,
-                    'location': 'overtime_rules'
-                }
-            )
+            response = self.table.get_item(Key=_rate_key(labor_type, 'overtime_rules'))
             
             if 'Item' in response:
                 return float(response['Item'].get('weekly_threshold', OVERTIME_THRESHOLD))
@@ -621,7 +619,7 @@ def _check_management_to_labor_ratio(extracted: Dict[str, Any], rates: MSARatesC
         table = dynamodb.Table(MSA_RATES_TABLE)
         default_ratio = 6.0
         try:
-            rr = table.get_item(Key={'labor_type':'SU','location':'ratio_rules'}).get('Item')
+            rr = table.get_item(Key=_rate_key('SU', 'ratio_rules')).get('Item')
             if rr and 'max_ratio' in rr:
                 default_ratio = float(rr['max_ratio'])
         except Exception:
