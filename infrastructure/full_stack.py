@@ -266,15 +266,13 @@ class MSAInvoiceAuditFullStack(Stack):
             )
         )
         
-        # Extraction Lambda
-        self.extraction_lambda = _lambda.Function(
+        self.ingestion_lambda = _lambda.Function(
             self,
-            "MSAExtractionLambda",
+            "MSAIngestionLambda",
             runtime=_lambda.Runtime.PYTHON_3_11,
-            handler="extraction_lambda.lambda_handler",
+            handler="ingestion_lambda.lambda_handler",
             code=_lambda.Code.from_asset(
                 "lambda",
-                exclude=["layers/**"],
                 bundling=_lambda.BundlingOptions(
                     image=_lambda.Runtime.PYTHON_3_11.bundling_image,
                     command=[
@@ -289,9 +287,7 @@ class MSAInvoiceAuditFullStack(Stack):
             memory_size=1024,
             layers=[self.common_layer],
             environment={
-                "INGESTION_BUCKET": self.ingestion_bucket.bucket_name,
-                "REPORTS_BUCKET": self.reports_bucket.bucket_name,
-                "MSA_RATES_TABLE": self.msa_rates_table.table_name
+                "BUCKET_NAME": self.ingestion_bucket.bucket_name
             }
         )
         
@@ -587,7 +583,7 @@ class MSAInvoiceAuditFullStack(Stack):
                 effect=iam.Effect.ALLOW,
                 actions=["lambda:InvokeFunction"],
                 resources=[
-                    self.extraction_lambda.function_arn,
+                    self.ingestion_lambda.function_arn,
                     self.agent_lambda.function_arn,
                     self.comparison_lambda.function_arn,
                     self.report_lambda.function_arn
@@ -599,7 +595,7 @@ class MSAInvoiceAuditFullStack(Stack):
         extract_task = sfn_tasks.LambdaInvoke(
             self,
             "ExtractDataTask",
-            lambda_function=self.extraction_lambda,
+            lambda_function=self.ingestion_lambda,
             payload=sfn.TaskInput.from_object({
                 "task": "extract",
                 "input": {

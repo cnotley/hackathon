@@ -154,15 +154,15 @@ class InvoiceIngestionStack(Stack):
             self,
             "MSAIngestionLambda",
             runtime=_lambda.Runtime.PYTHON_3_11,
-            handler="handler.lambda_handler",
+            handler="ingestion_lambda.lambda_handler",
             code=_lambda.Code.from_asset(
-                "lambda/ingestion",
+                "lambda",
                 bundling=_lambda.BundlingOptions(
                     image=_lambda.Runtime.PYTHON_3_11.bundling_image,
                     command=[
                         "bash",
                         "-c",
-                        "set -euo pipefail; cd /asset-input && pip install --platform manylinux2014_x86_64 --only-binary=:all: -r ../../requirements.txt -t /asset-output && cp -au . /asset-output"
+                        "set -euo pipefail; cd /asset-input && pip install --platform manylinux2014_x86_64 --only-binary=:all: -r ../requirements.txt -t /asset-output && cp -au . /asset-output"
                     ]
                 )
             ),
