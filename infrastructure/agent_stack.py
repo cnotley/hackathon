@@ -14,12 +14,13 @@ from aws_cdk import (
     aws_dynamodb as dynamodb,
     aws_iam as iam,
     aws_s3 as s3,
-    aws_opensearch as opensearch,
+    aws_opensearchservice as opensearch,
     aws_bedrock as bedrock,
     aws_logs as logs,
     aws_sagemaker as sagemaker,
     aws_stepfunctions as sfn,
-    aws_stepfunctions_tasks as sfn_tasks
+    aws_stepfunctions_tasks as sfn_tasks,
+    custom_resources as cr
 )
 from constructs import Construct
 import json
@@ -74,79 +75,96 @@ class InvoiceAuditAgentStack(Stack):
         table = dynamodb.Table(
             self,
             "MSARatesTable",
-            table_name="msa-rates",
-            partition_key=dynamodb.Attribute(
-                name="labor_type",
-                type=dynamodb.AttributeType.STRING
-            ),
-            sort_key=dynamodb.Attribute(
-                name="location",
-                type=dynamodb.AttributeType.STRING
-            ),
+            table_name=f"{Stack.of(self).stack_name.lower()}-msa-rates",
+            partition_key=dynamodb.Attribute(name="rate_id", type=dynamodb.AttributeType.STRING),
+            sort_key=dynamodb.Attribute(name="effective_date", type=dynamodb.AttributeType.STRING),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
-            removal_policy=RemovalPolicy.DESTROY,  # For demo purposes
-            point_in_time_recovery=True,
-            stream=dynamodb.StreamViewType.NEW_AND_OLD_IMAGES
+            removal_policy=RemovalPolicy.DESTROY,
+            point_in_time_recovery=True
         )
-        
-        # Add GSI for location-based queries
-        table.add_global_secondary_index(
-            index_name="LocationIndex",
-            partition_key=dynamodb.Attribute(
-                name="location",
-                type=dynamodb.AttributeType.STRING
-            ),
-            sort_key=dynamodb.Attribute(
-                name="labor_type",
-                type=dynamodb.AttributeType.STRING
-            )
-        )
-        
+
+        self._seed_msa_rates(table)
+
         return table
 
-    def _create_opensearch_domain(self) -> opensearch.Domain:
-        """Create OpenSearch domain for Knowledge Base vector storage."""
-        # Create OpenSearch domain
-        domain = opensearch.Domain(
+    def _seed_msa_rates(self, table: dynamodb.Table) -> None:
+        seed_function = _lambda.Function(
+            self,
+            "AgentMSARateSeedFunction",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="index.handler",
+            code=_lambda.Code.from_inline(
+                """
+import boto3
+from decimal import Decimal
+
+DEFAULT_DATE = "2024-01-01"
+
+def handler(event, _context):
+    physical_id = "agent-msa-rate-seed"
+    if event.get("RequestType") == "Delete":
+        return {"PhysicalResourceId": physical_id}
+
+    table_name = event["ResourceProperties"]["TableName"]
+    dynamodb = boto3.resource("dynamodb")
+    table = dynamodb.Table(table_name)
+
+    sample_rates = [
+        {"rate_id": "RS#default", "effective_date": DEFAULT_DATE, "labor_type": "RS", "location": "default", "standard_rate": "70.00", "description": "Regular Skilled Labor"},
+        {"rate_id": "US#default", "effective_date": DEFAULT_DATE, "labor_type": "US", "location": "default", "standard_rate": "85.00", "description": "Unskilled Supervisor"},
+        {"rate_id": "SS#default", "effective_date": DEFAULT_DATE, "labor_type": "SS", "location": "default", "standard_rate": "95.00", "description": "Skilled Supervisor"},
+        {"rate_id": "SU#default", "effective_date": DEFAULT_DATE, "labor_type": "SU", "location": "default", "standard_rate": "110.00", "description": "Senior Supervisor"},
+        {"rate_id": "EN#default", "effective_date": DEFAULT_DATE, "labor_type": "EN", "location": "default", "standard_rate": "125.00", "description": "Engineer"},
+        {"rate_id": "default#overtime_rules", "effective_date": DEFAULT_DATE, "labor_type": "default", "location": "overtime_rules", "weekly_threshold": "40"},
+        {"rate_id": "SU#ratio_rules", "effective_date": DEFAULT_DATE, "labor_type": "SU", "location": "ratio_rules", "max_ratio": "6"}
+    ]
+
+    for item in sample_rates:
+        formatted = {k: (Decimal(str(v)) if k in {"standard_rate", "weekly_threshold", "max_ratio"} else v) for k, v in item.items()}
+        table.put_item(Item=formatted)
+
+    return {"PhysicalResourceId": physical_id}
+                """
+            ),
+            timeout=Duration.minutes(5)
+        )
+
+        table.grant_write_data(seed_function)
+
+        provider = cr.Provider(
+            self,
+            "AgentMSARateSeedProvider",
+            on_event_handler=seed_function
+        )
+
+        cr.CustomResource(
+            self,
+            "AgentMSARateSeed",
+            service_token=provider.service_token,
+            properties={
+                "TableName": table.table_name
+            }
+        )
+
+    def _create_opensearch_domain(self) -> opensearch.CfnDomain:
+        domain = opensearch.CfnDomain(
             self,
             "KnowledgeBaseOpenSearch",
-            domain_name="invoice-audit-kb",
-            version=opensearch.EngineVersion.OPENSEARCH_2_5,
-            capacity=opensearch.CapacityConfig(
-                data_nodes=1,
-                data_node_instance_type="t3.small.search",
-                master_nodes=0
+            domain_name=f"{Stack.of(self).stack_name.lower()}-kb",
+            engine_version="OpenSearch_2.5",
+            cluster_config=opensearch.CfnDomain.ClusterConfigProperty(
+                instance_type="r6g.large.search",
+                instance_count=1
             ),
-            ebs=opensearch.EbsOptions(
-                volume_size=20,
-                volume_type=opensearch.EbsDeviceVolumeType.GP3
+            ebs_options=opensearch.CfnDomain.EBSOptionsProperty(
+                ebs_enabled=True,
+                volume_size=100,
+                volume_type="gp3"
             ),
-            zone_awareness=opensearch.ZoneAwarenessConfig(
-                enabled=False
-            ),
-            logging=opensearch.LoggingOptions(
-                slow_search_log_enabled=True,
-                app_log_enabled=True,
-                slow_index_log_enabled=True
-            ),
-            node_to_node_encryption=True,
-            encryption_at_rest=opensearch.EncryptionAtRestOptions(
-                enabled=True
-            ),
-            enforce_https=True,
-            removal_policy=RemovalPolicy.DESTROY  # For demo purposes
+            encryption_at_rest_options=opensearch.CfnDomain.EncryptionAtRestOptionsProperty(enabled=True),
+            node_to_node_encryption_options=opensearch.CfnDomain.NodeToNodeEncryptionOptionsProperty(enabled=True),
+            domain_endpoint_options=opensearch.CfnDomain.DomainEndpointOptionsProperty(enforce_https=True)
         )
-        
-        # Add access policy for Bedrock
-        domain.add_access_policies(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                principals=[iam.ServicePrincipal("bedrock.amazonaws.com")],
-                actions=["es:*"],
-                resources=[f"{domain.domain_arn}/*"]
-            )
-        )
-        
         return domain
 
     def _create_knowledge_base(self) -> bedrock.CfnKnowledgeBase:
@@ -181,7 +199,7 @@ class InvoiceAuditAgentStack(Stack):
                                 "es:ESHttpDelete",
                                 "es:ESHttpHead"
                             ],
-                            resources=[f"{self.opensearch_domain.domain_arn}/*"]
+                            resources=[f"{self.opensearch_domain.attr_arn}/*"]
                         ),
                         # Bedrock model permissions
                         iam.PolicyStatement(
@@ -198,23 +216,22 @@ class InvoiceAuditAgentStack(Stack):
             }
         )
         
-        # Create Knowledge Base
         knowledge_base = bedrock.CfnKnowledgeBase(
             self,
             "InvoiceAuditKnowledgeBase",
-            name="invoice-audit-knowledge-base",
+            name=f"{Stack.of(self).stack_name.lower()}-kb",
             description="Knowledge base for invoice auditing with extracted data and MSA standards",
             role_arn=kb_role.role_arn,
             knowledge_base_configuration=bedrock.CfnKnowledgeBase.KnowledgeBaseConfigurationProperty(
                 type="VECTOR",
                 vector_knowledge_base_configuration=bedrock.CfnKnowledgeBase.VectorKnowledgeBaseConfigurationProperty(
-                    embedding_model_arn="arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v1"
+                    embedding_model_arn=f"arn:aws:bedrock:{self.region}::foundation-model/amazon.titan-embed-text-v1"
                 )
             ),
             storage_configuration=bedrock.CfnKnowledgeBase.StorageConfigurationProperty(
                 type="OPENSEARCH_DOMAIN",
                 opensearch_configuration=bedrock.CfnKnowledgeBase.OpenSearchConfigurationProperty(
-                    domain_endpoint=self.opensearch_domain.domain_endpoint,
+                    domain_endpoint=self.opensearch_domain.attr_domain_endpoint,
                     index_name="invoice-audit-index",
                     field_mapping=bedrock.CfnKnowledgeBase.OpenSearchFieldMappingProperty(
                         vector_field="vector",
@@ -224,7 +241,21 @@ class InvoiceAuditAgentStack(Stack):
                 )
             )
         )
-        
+
+        knowledge_base.add_dependency(self.opensearch_domain)
+
+        bedrock.CfnDataSource(
+            self,
+            "InvoiceAuditKnowledgeSource",
+            knowledge_base_id=knowledge_base.attr_knowledge_base_id,
+            name=f"{Stack.of(self).stack_name.lower()}-kb-source",
+            data_source_configuration=bedrock.CfnDataSource.DataSourceConfigurationProperty(
+                s3_configuration=bedrock.CfnDataSource.S3ConfigurationProperty(
+                    bucket_arn=self.ingestion_bucket.bucket_arn
+                )
+            )
+        )
+
         return knowledge_base
 
     def _create_bedrock_agent(self) -> bedrock.CfnAgent:
@@ -295,95 +326,27 @@ class InvoiceAuditAgentStack(Stack):
         agent = bedrock.CfnAgent(
             self,
             "InvoiceAuditAgent",
-            agent_name="invoice-audit-agent",
+            agent_name=f"{Stack.of(self).stack_name.lower()}-agent",
             description="AI agent for auditing invoices against MSA standards",
             foundation_model="anthropic.claude-3-5-sonnet-20241022-v2:0",
             instruction=agent_instruction,
             agent_resource_role_arn=agent_role.role_arn,
-            idle_session_ttl_in_seconds=1800,  # 30 minutes
             knowledge_bases=[
                 bedrock.CfnAgent.AgentKnowledgeBaseProperty(
                     knowledge_base_id=self.knowledge_base.attr_knowledge_base_id,
-                    description="Knowledge base containing extracted invoice data and MSA standards",
                     knowledge_base_state="ENABLED"
                 )
-            ],
-            action_groups=[
-                bedrock.CfnAgent.AgentActionGroupProperty(
-                    action_group_name="extraction-actions",
-                    description="Actions for extracting and processing invoice data",
-                    action_group_state="ENABLED",
-                    action_group_executor=bedrock.CfnAgent.ActionGroupExecutorProperty(
-                        lambda_=self.extraction_lambda.function_arn
-                    ),
-                    api_schema=bedrock.CfnAgent.APISchemaProperty(
-                        payload=json.dumps({
-                            "openapi": "3.0.0",
-                            "info": {
-                                "title": "Invoice Extraction API",
-                                "version": "1.0.0",
-                                "description": "API for extracting data from invoices"
-                            },
-                            "paths": {
-                                "/extract": {
-                                    "post": {
-                                        "summary": "Extract data from invoice",
-                                        "description": "Extract structured data from PDF or Excel invoice",
-                                        "operationId": "extractInvoiceData",
-                                        "requestBody": {
-                                            "required": True,
-                                            "content": {
-                                                "application/json": {
-                                                    "schema": {
-                                                        "type": "object",
-                                                        "properties": {
-                                                            "bucket": {"type": "string"},
-                                                            "key": {"type": "string"},
-                                                            "task": {"type": "string", "default": "extract"}
-                                                        },
-                                                        "required": ["bucket", "key"]
-                                                    }
-                                                }
-                                            }
-                                        },
-                                        "responses": {
-                                            "200": {
-                                                "description": "Extraction completed successfully",
-                                                "content": {
-                                                    "application/json": {
-                                                        "schema": {
-                                                            "type": "object",
-                                                            "properties": {
-                                                                "extraction_status": {"type": "string"},
-                                                                "extracted_data": {"type": "object"},
-                                                                "normalized_data": {"type": "object"}
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        })
-                    )
-                )
-            ],
-            guardrail_configuration=bedrock.CfnAgent.GuardrailConfigurationProperty(
-                guardrail_identifier="NONE"  # Can be enhanced with custom guardrails
-            )
+            ]
         )
-        
-        # Create Agent Alias and store identifier for downstream consumers
+        agent.add_dependency(self.knowledge_base)
+
         self.agent_alias = bedrock.CfnAgentAlias(
             self,
             "InvoiceAuditAgentAlias",
             agent_id=agent.attr_agent_id,
-            agent_alias_name="production",
-            description="Production alias for invoice audit agent"
+            agent_alias_name="production"
         )
-        
+
         return agent
 
     def _create_agent_lambda(self) -> _lambda.Function:
@@ -449,6 +412,7 @@ class InvoiceAuditAgentStack(Stack):
                 "MSA_RATES_TABLE": self.msa_rates_table.table_name,
                 "EXTRACTION_LAMBDA_NAME": self.extraction_lambda.function_name,
                 "BUCKET_NAME": self.ingestion_bucket.bucket_name,
+                "MSA_DEFAULT_EFFECTIVE_DATE": "2024-01-01",
                 "LOG_LEVEL": "INFO"
             },
             log_retention=logs.RetentionDays.ONE_WEEK
@@ -578,7 +542,8 @@ class InvoiceAuditAgentStack(Stack):
                 "BEDROCK_MODEL_ID": "anthropic.claude-3-5-sonnet-20241022-v2:0",
                 "LOG_LEVEL": "INFO",
                 "VARIANCE_THRESHOLD": "0.05",  # 5% threshold
-                "OVERTIME_THRESHOLD": "40.0"   # 40 hours/week
+                "OVERTIME_THRESHOLD": "40.0",
+                "MSA_DEFAULT_EFFECTIVE_DATE": "2024-01-01"
             },
             log_retention=logs.RetentionDays.ONE_WEEK
         )
@@ -693,6 +658,7 @@ class InvoiceAuditAgentStack(Stack):
                 "TEMPLATE_BUCKET": templates_bucket.bucket_name,
                 "TEMPLATE_KEY": "XXXI_Template.xlsx",
                 "MSA_RATES_TABLE": self.msa_rates_table.table_name,
+                "MSA_DEFAULT_EFFECTIVE_DATE": "2024-01-01",
                 "LOG_LEVEL": "INFO"
             },
             log_retention=logs.RetentionDays.ONE_WEEK,

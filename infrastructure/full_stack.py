@@ -14,7 +14,7 @@ from aws_cdk import (
     aws_iam as iam,
     aws_dynamodb as dynamodb,
     aws_bedrock as bedrock,
-    aws_opensearch as opensearch,
+    aws_opensearchservice as opensearch,
     aws_sagemaker as sagemaker,
     aws_apprunner as apprunner,
     aws_ecr as ecr,
@@ -404,22 +404,29 @@ def handler(event, _context):
     def _create_bedrock_components(self) -> None:
         """Create Bedrock Agent and Knowledge Base."""
         # OpenSearch domain for Knowledge Base
-        self.opensearch_domain = opensearch.Domain(
+        self.opensearch_domain = opensearch.CfnDomain(
             self,
             "MSAKnowledgeBaseOpenSearch",
-            version=opensearch.EngineVersion.OPENSEARCH_2_5,
-            capacity=opensearch.CapacityConfig(
-                data_nodes=1,
-                data_node_instance_type="t3.small.search"
+            domain_name=f"{self.stack_name.lower()}-kb",
+            engine_version="OpenSearch_2.5",
+            cluster_config=opensearch.CfnDomain.ClusterConfigProperty(
+                instance_type="r6g.large.search",
+                instance_count=1
             ),
-            ebs=opensearch.EbsOptions(
-                volume_size=10,
-                volume_type=ec2.EbsDeviceVolumeType.GP3
+            ebs_options=opensearch.CfnDomain.EBSOptionsProperty(
+                ebs_enabled=True,
+                volume_size=100,
+                volume_type="gp3"
             ),
-            zone_awareness=opensearch.ZoneAwarenessConfig(
-                enabled=False
+            encryption_at_rest_options=opensearch.CfnDomain.EncryptionAtRestOptionsProperty(
+                enabled=True
             ),
-            removal_policy=RemovalPolicy.DESTROY
+            node_to_node_encryption_options=opensearch.CfnDomain.NodeToNodeEncryptionOptionsProperty(
+                enabled=True
+            ),
+            domain_endpoint_options=opensearch.CfnDomain.DomainEndpointOptionsProperty(
+                enforce_https=True
+            )
         )
         
         # Bedrock Agent execution role
@@ -447,6 +454,19 @@ def handler(event, _context):
                                 self.agent_lambda.function_arn,
                                 self.comparison_lambda.function_arn
                             ]
+                        ),
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=["s3:GetObject", "s3:ListBucket"],
+                            resources=[
+                                self.knowledge_base_bucket.bucket_arn,
+                                f"{self.knowledge_base_bucket.bucket_arn}/*"
+                            ]
+                        ),
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=["es:ESHttpGet", "es:ESHttpPost", "es:ESHttpPut", "es:ESHttpDelete"],
+                            resources=[f"{self.opensearch_domain.attr_arn}/*"]
                         )
                     ]
                 )
@@ -457,8 +477,8 @@ def handler(event, _context):
         self.knowledge_base = bedrock.CfnKnowledgeBase(
             self,
             "MSAKnowledgeBase",
-            name="msa-invoice-knowledge-base",
-            description="Knowledge base for MSA invoice auditing standards and procedures",
+            name=f"{self.stack_name.lower()}-kb",
+            description="Knowledge base for MSA invoice auditing standards",
             role_arn=bedrock_agent_role.role_arn,
             knowledge_base_configuration=bedrock.CfnKnowledgeBase.KnowledgeBaseConfigurationProperty(
                 type="VECTOR",
@@ -469,7 +489,7 @@ def handler(event, _context):
             storage_configuration=bedrock.CfnKnowledgeBase.StorageConfigurationProperty(
                 type="OPENSEARCH_DOMAIN",
                 opensearch_configuration=bedrock.CfnKnowledgeBase.OpenSearchConfigurationProperty(
-                    domain_endpoint=self.opensearch_domain.domain_endpoint,
+                    domain_endpoint=self.opensearch_domain.attr_domain_endpoint,
                     index_name="msa-knowledge-index",
                     field_mapping=bedrock.CfnKnowledgeBase.OpenSearchFieldMappingProperty(
                         vector_field="vector",
@@ -479,56 +499,44 @@ def handler(event, _context):
                 )
             )
         )
+        self.knowledge_base.add_dependency(self.opensearch_domain)
+
+        self.data_source = bedrock.CfnDataSource(
+            self,
+            "MSAKnowledgeBaseDataSource",
+            knowledge_base_id=self.knowledge_base.attr_knowledge_base_id,
+            name=f"{self.stack_name.lower()}-kb-datasource",
+            data_source_configuration=bedrock.CfnDataSource.DataSourceConfigurationProperty(
+                s3_configuration=bedrock.CfnDataSource.S3ConfigurationProperty(
+                    bucket_arn=self.knowledge_base_bucket.bucket_arn
+                )
+            )
+        )
+        self.data_source.add_dependency(self.knowledge_base)
         
         # Bedrock Agent
         self.bedrock_agent = bedrock.CfnAgent(
             self,
             "MSABedrockAgent",
-            agent_name="msa-invoice-audit-agent",
+            agent_name=f"{self.stack_name.lower()}-agent",
             description="AI agent for MSA invoice auditing and compliance checking",
             foundation_model="anthropic.claude-3-5-sonnet-20241022-v2:0",
-            instruction="""You are an expert MSA (Master Services Agreement) invoice auditing agent. 
-            Your role is to analyze invoices against MSA standards, identify discrepancies, 
-            calculate overcharges, and suggest cost savings opportunities. 
-            Use the knowledge base for MSA rates and compliance requirements.""",
+            instruction="Audit labor costs in invoices, comparing against MSA rates and summarising discrepancies.",
             role_arn=bedrock_agent_role.role_arn,
+            agent_resource_role_arn=bedrock_agent_role.role_arn,
             knowledge_bases=[
                 bedrock.CfnAgent.AgentKnowledgeBaseProperty(
                     knowledge_base_id=self.knowledge_base.attr_knowledge_base_id,
-                    description="MSA rates and compliance standards",
                     knowledge_base_state="ENABLED"
-                )
-            ],
-            action_groups=[
-                bedrock.CfnAgent.AgentActionGroupProperty(
-                    action_group_name="msa-rate-lookup",
-                    description="Look up MSA rates and perform calculations",
-                    action_group_executor=bedrock.CfnAgent.ActionGroupExecutorProperty(
-                        lambda_=self.agent_lambda.function_arn
-                    ),
-                    function_schema=bedrock.CfnAgent.FunctionSchemaProperty(
-                        functions=[
-                            bedrock.CfnAgent.FunctionProperty(
-                                name="lookup_msa_rate",
-                                description="Look up MSA rate for a specific category and subcategory"
-                            ),
-                            bedrock.CfnAgent.FunctionProperty(
-                                name="calculate_overcharge",
-                                description="Calculate overcharge amount based on MSA rates"
-                            )
-                        ]
-                    )
                 )
             ]
         )
-        
-        # Bedrock Agent Alias
+        self.bedrock_agent.add_dependency(self.knowledge_base)
         self.bedrock_agent_alias = bedrock.CfnAgentAlias(
             self,
             "MSABedrockAgentAlias",
-            agent_alias_name="PROD",
             agent_id=self.bedrock_agent.attr_agent_id,
-            description="Production alias for MSA invoice audit agent"
+            agent_alias_name="PROD"
         )
     
     def _create_step_functions_workflow(self) -> None:

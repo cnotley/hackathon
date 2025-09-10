@@ -140,6 +140,9 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
+
+# When running CDK commands, ensure the virtual environment is active or
+# explicitly reference the interpreter (e.g. ./venv/bin/python app.py).
 ```
 
 ### 2. Install CDK (if not already installed)
