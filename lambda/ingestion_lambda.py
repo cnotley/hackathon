@@ -7,6 +7,28 @@ if not logger.handlers:
 
 MAX_MB = int(os.environ.get("MAX_UPLOAD_MB", "5"))
 
+
+def validate_file_size(size_bytes: int) -> None:
+    """Validate the inbound object's size.
+
+    Parameters
+    ----------
+    size_bytes: int
+        Size of the object in bytes.
+
+    Raises
+    ------
+    ValueError
+        If the file is larger than the configured ``MAX_UPLOAD_MB`` limit.
+    """
+
+    size_mb = size_bytes / (1024 * 1024)
+    if size_mb > MAX_MB:
+        raise ValueError(
+            f"File too large ({size_mb:.2f}MB) > {MAX_MB}MB limit"
+        )
+
+
 def _start_workflow(bucket, key):
     """Attempt to start the Step Functions workflow with retries."""
     sfn = client("stepfunctions")
@@ -23,10 +45,14 @@ def _start_workflow(bucket, key):
         return {"status": "no_state_machine", "input": input_payload}
 
     delay = 1.0
-    for attempt in range(3):
+    for attempt in range(5):
         try:
             sfn.start_execution(stateMachineArn=arn, input=json.dumps(input_payload))
-            return {"status": "started", "stateMachineArn": arn, "attempt": attempt + 1}
+            return {
+                "status": "started",
+                "stateMachineArn": arn,
+                "attempt": attempt + 1,
+            }
         except Exception as e:
             logger.warning("start_execution failed (attempt %s): %s", attempt + 1, e)
             time.sleep(delay)
@@ -50,13 +76,32 @@ def handle_event(event, context):
             except Exception as e:
                 logger.warning("HEAD failed for s3://%s/%s: %s", b, k, e)
                 size = 0
-        size_mb = (int(size) / (1024*1024))
-        if size_mb > MAX_MB:
-            msg = f"File too large ({size_mb:.2f}MB) > {MAX_MB}MB limit"
+        try:
+            validate_file_size(int(size))
+        except ValueError as e:
+            msg = str(e)
             logger.error(msg)
             results.append({"bucket": b, "key": k, "error": msg})
+            # attempt to tag object as rejected
+            try:
+                client("s3").put_object_tagging(
+                    Bucket=b,
+                    Key=k,
+                    Tagging={"TagSet": [{"Key": "status", "Value": "rejected"}]},
+                )
+            except Exception as tag_err:  # pragma: no cover - best effort
+                logger.warning("tagging failed for %s/%s: %s", b, k, tag_err)
             continue
-        logger.info("Accepting %s/%s size=%.2fMB", b, k, size_mb)
+        logger.info("Accepting %s/%s size=%.2fMB", b, k, int(size) / (1024 * 1024))
         start = _start_workflow(b, k)
+        # tag object to show workflow started
+        try:
+            client("s3").put_object_tagging(
+                Bucket=b,
+                Key=k,
+                Tagging={"TagSet": [{"Key": "status", "Value": start.get("status")}]} ,
+            )
+        except Exception as tag_err:  # pragma: no cover - best effort
+            logger.warning("tagging failed for %s/%s: %s", b, k, tag_err)
         results.append({"bucket": b, "key": k, "start": start})
     return {"batch": results}

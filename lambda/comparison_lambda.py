@@ -1,6 +1,7 @@
-import os, logging, json, statistics
+import os, logging, json, statistics, time
 from layers.common.python.common import client, resource
 from functools import lru_cache
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 if not logger.handlers:
@@ -15,9 +16,9 @@ except Exception:  # pragma: no cover - library optional during tests
     CurrencyRates = None
 
 try:
-    from statsmodels.stats.diagnostic import kstest_normal
+    from statsmodels.stats.diagnostic import normal_ad
 except Exception:  # pragma: no cover
-    kstest_normal = None
+    normal_ad = None
 
 @lru_cache(maxsize=128)
 def _load_rates():
@@ -46,20 +47,33 @@ def _local_anomaly_scores(values):
 
 def _sagemaker_scores(values):
     ep = os.environ.get("SM_ENDPOINT")
-    if not ep: return None
-    try:
-        sm = client("sagemaker-runtime")
-        body = json.dumps({"instances":[{"features":[v]} for v in values]})
-        resp = sm.invoke_endpoint(EndpointName=ep, Body=body, ContentType="application/json")
-        out = resp["Body"].read().decode("utf-8"); parsed = json.loads(out)
-        return parsed.get("scores")
-    except Exception as e:
-        logger.warning("SageMaker invoke failed: %s", e); return None
+    if not ep:
+        return None
+    delay = 1.0
+    for attempt in range(3):
+        try:
+            sm = client("sagemaker-runtime")
+            body = json.dumps({"instances": [{"features": [v]} for v in values]})
+            resp = sm.invoke_endpoint(
+                EndpointName=ep, Body=body, ContentType="application/json"
+            )
+            out = resp["Body"].read().decode("utf-8")
+            parsed = json.loads(out)
+            return parsed.get("scores")
+        except ClientError as e:
+            logger.warning("SageMaker invoke failed (%s): %s", attempt + 1, e)
+            time.sleep(delay)
+            delay *= 1.5
+        except Exception as e:  # pragma: no cover
+            logger.warning("SageMaker invoke failed: %s", e)
+            break
+    return None
 
 def compare_data(extracted):
     rates = _load_rates()
     flags = []
     savings = 0.0
+    formatting = []
 
     currency = extracted.get("currency", "USD")
     rate_conv = 1.0
@@ -89,7 +103,8 @@ def compare_data(extracted):
             seen.add(key)
 
         if rate < 0 or hours < 0 or total < 0:
-            flags.append({"type":"negative_value","item": item})
+            flags.append({"type": "negative_value", "item": item})
+            raise ValueError("negative_value detected")
 
         if hours > 40:
             flags.append({"type":"overtime_gt_40","hours": hours, "item": item})
@@ -98,9 +113,10 @@ def compare_data(extracted):
         if expected:
             diff = (rate - expected) / expected
             if diff > VARIANCE_THRESH:
-                flags.append({"type":"rate_high_vs_mwo","code": code, "expected": expected, "seen": rate})
+                flags.append({"type": "rate_high_vs_mwo", "code": code, "expected": expected, "seen": rate})
                 potential = (rate - expected) * hours
                 savings += max(0.0, potential)
+                formatting.append({"sheet": "Labor Export", "row": idx + 2, "severity": "high" if diff > 0.10 else "medium"})
 
         score = sm_scores[idx] if idx < len(sm_scores) else 0.0
         if score > 0.6:
@@ -112,9 +128,9 @@ def compare_data(extracted):
         if sum(amounts) > reported_total * 1.5:
             flags.append({"type": "distribution_mismatch", "sum_labor": sum(amounts), "reported_total": reported_total})
 
-    if kstest_normal and amounts:
+    if normal_ad and amounts:
         try:
-            stat, p = kstest_normal(amounts)
+            stat, p = normal_ad(amounts)
             if p < 0.05:
                 flags.append({"type": "distribution_non_normal", "pvalue": p})
         except Exception as e:
@@ -123,7 +139,7 @@ def compare_data(extracted):
     if savings == 0 and flags:
         savings = sum(amounts) * 0.10
 
-    return {"flags": flags, "estimated_savings": round(savings, 2), "rates_used": rates}
+    return {"flags": flags, "estimated_savings": round(savings, 2), "rates_used": rates, "formatting": formatting}
 
 def compare_handler(event, context):
     return compare_data(event)
