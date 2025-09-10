@@ -199,6 +199,10 @@ def extract_data(bucket=None, key=None, local_path=None):
             text = _local_pdf_fallback(local_path)
             return _parse_from_text(text)
         elif local_path.lower().endswith(".xlsx"):
+            if pd is None:
+                raise ImportError(
+                    "pandas is required to read Excel files. Install it with `pip install pandas`."
+                )
             df = pd.read_excel(local_path)
             # Expect columns: Name, Code, Rate, Hours, Total
             labor = df.to_dict("records")
