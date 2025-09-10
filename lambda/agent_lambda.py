@@ -25,6 +25,7 @@ logger.setLevel(os.getenv('LOG_LEVEL', 'INFO'))
 bedrock_agent_client = boto3.client('bedrock-agent-runtime')
 bedrock_client = boto3.client('bedrock-runtime')
 lambda_client = boto3.client('lambda')
+stepfunctions_client = boto3.client('stepfunctions')
 dynamodb = boto3.resource('dynamodb')
 s3_client = boto3.client('s3')
 
@@ -419,6 +420,15 @@ Please verify these rates against your current MSA agreement as rates may vary b
         return False
 
 
+def _extract_discrepancy_flags(audit_results: Dict[str, Any]) -> List[Dict[str, Any]]:
+    flags: List[Dict[str, Any]] = []
+    if not audit_results:
+        return flags
+    for entry in audit_results.get('discrepancies', []) or []:
+        flags.append(entry)
+    return flags
+
+
 def call_extraction_lambda(bucket: str, key: str) -> Dict[str, Any]:
     """Call the existing extraction Lambda function."""
     try:
@@ -516,6 +526,19 @@ def handle_audit_request(event: Dict[str, Any]) -> Dict[str, Any]:
         logger.info("Invoking Bedrock agent...")
         agent_manager = BedrockAgentManager()
         agent_response = agent_manager.invoke_agent(enhanced_query)
+
+        # If discrepancies require human review, return early with pending status
+        audit_discrepancies = audit_results.get('discrepancies', [])
+        if audit_discrepancies:
+            pending_payload = {
+                'status': 'pending_approval',
+                'session_id': agent_response.get('session_id'),
+                'flags': audit_discrepancies,
+                'audit_results': audit_results,
+                'file_info': context['file_info']
+            }
+            logger.info("HITL approval required; pausing workflow")
+            return pending_payload
         
         # Step 6: Combine results
         final_result = {
@@ -559,7 +582,7 @@ def handle_async_agent_query(event: Dict[str, Any]) -> Dict[str, Any]:
         
         # Process the query synchronously in this async context
         agent_manager = BedrockAgentManager()
-        result = agent_manager.invoke_agent(query, session_id, use_cache=True)
+        result = agent_manager.invoke_agent(query, session_id)
         
         # If callback URL is provided, send results there
         if callback_url:
@@ -595,52 +618,33 @@ def handle_async_agent_query(event: Dict[str, Any]) -> Dict[str, Any]:
 def handle_hitl_approval(event: Dict[str, Any]) -> Dict[str, Any]:
     """Handle human-in-the-loop approval workflow."""
     try:
+        approved = event.get('approved', False)
+        session_id = event.get('session_id')
+        execution_arn = event.get('execution_arn')
         comparison_result = event.get('comparison_result', {})
         bucket = event.get('bucket')
         key = event.get('key')
-        
-        logger.info(f"Processing HITL approval for {bucket}/{key}")
-        
-        # Extract discrepancy analysis
-        discrepancy_analysis = comparison_result.get('discrepancy_analysis', {})
-        total_savings = discrepancy_analysis.get('summary', {}).get('total_potential_savings', 0)
-        
-        # Create approval summary
-        approval_summary = {
-            'approval_id': str(uuid.uuid4()),
-            'timestamp': datetime.utcnow().isoformat(),
-            'file_info': {
-                'bucket': bucket,
-                'key': key
-            },
-            'discrepancy_summary': {
-                'total_savings': total_savings,
-                'total_discrepancies': discrepancy_analysis.get('summary', {}).get('total_discrepancies', 0),
-                'rate_variances': discrepancy_analysis.get('summary', {}).get('rate_variances', 0),
-                'overtime_violations': discrepancy_analysis.get('summary', {}).get('overtime_violations', 0),
-                'anomalies': discrepancy_analysis.get('summary', {}).get('anomalies', 0)
-            },
-            'approval_required': total_savings > 1000,
-            'status': 'pending_approval'
-        }
-        
-        # Store approval request in S3 for UI access
-        if BUCKET_NAME:
-            approval_key = f"approvals/{approval_summary['approval_id']}.json"
-            s3_client.put_object(
-                Bucket=BUCKET_NAME,
-                Key=approval_key,
-                Body=json.dumps(approval_summary, default=str),
-                ContentType='application/json'
-            )
-            logger.info(f"Approval request stored: s3://{BUCKET_NAME}/{approval_key}")
-        
+
+        logger.info(f"Processing HITL approval for {bucket}/{key} (approved={approved})")
+
+        if approved and execution_arn:
+            try:
+                stepfunctions_client.send_task_success(
+                    taskToken=event['task_token'],
+                    output=json.dumps({'approved': True})
+                )
+            except Exception as e:
+                logger.error(f"Failed to resume Step Functions execution: {e}")
+
+        if session_id:
+            manager = BedrockAgentManager()
+            manager.clear_session(session_id)
+
         return {
-            'status': 'hitl_approval_required',
-            'approval_summary': approval_summary,
-            'message': f'Human approval required for high-value discrepancies (${total_savings:,.2f} potential savings)'
+            'status': 'hitl_processed',
+            'approved': approved,
+            'timestamp': datetime.utcnow().isoformat()
         }
-        
     except Exception as e:
         logger.error(f"Error in HITL approval: {str(e)}")
         return {

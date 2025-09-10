@@ -42,7 +42,7 @@
         }
       },
       "ResultPath": "$.agent_analysis",
-      "Next": "CompareRates",
+      "Next": "CheckApprovalState",
       "Retry": [
         {
           "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
@@ -58,6 +58,22 @@
           "ResultPath": "$.error"
         }
       ]
+    },
+    "CheckApprovalState": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.agent_analysis.Payload.status",
+          "StringEquals": "pending_approval",
+          "Next": "WaitForApproval"
+        }
+      ],
+      "Default": "CompareRates"
+    },
+    "WaitForApproval": {
+      "Type": "Wait",
+      "Seconds": 30,
+      "Next": "CheckApprovalState"
     },
     "CompareRates": {
       "Type": "Task",

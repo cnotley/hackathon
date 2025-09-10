@@ -498,6 +498,35 @@ class MSAInvoiceAuditor:
             st.error(f"Error listing pending approvals: {str(e)}")
             return []
 
+    def get_pending_flags(self, execution_arn: str) -> List[Dict[str, Any]]:
+        try:
+            response = self.stepfunctions_client.describe_execution(executionArn=execution_arn)
+            output = response.get('output')
+            if output:
+                payload = json.loads(output)
+                if payload.get('status') == 'pending_approval':
+                    return payload.get('flags', [])
+            return []
+        except ClientError as e:
+            logger.error(f"Error fetching flags: {e}")
+            return []
+
+    def submit_hitl_decision(self, session_id: str, approved: bool) -> None:
+        payload = {
+            'action': 'hitl_approval',
+            'session_id': session_id,
+            'approved': approved
+        }
+        lambda_client = boto3.client('lambda')
+        try:
+            lambda_client.invoke(
+                FunctionName='agent-lambda',
+                InvocationType='Event',
+                Payload=json.dumps(payload)
+            )
+        except ClientError as e:
+            logger.error(f"Failed to submit HITL decision: {e}")
+
 def main():
     """Enhanced main Streamlit application with authentication and validation."""
     
