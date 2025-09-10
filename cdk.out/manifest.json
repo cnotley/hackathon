@@ -23,7 +23,7 @@
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/f160232e30f9ca9003336d7b00d0f3031d4618e4f186676356fb0aa938708c21.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/4adca411f4435467042ac0659be28466d87405ecc2aab5ba882d08a339489ded.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -264,6 +264,48 @@
             "data": "InvoiceAuditStateMachine780A2967"
           }
         ],
+        "/MSAInvoiceAuditFullStack/UiRepository/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "UiRepository74A54B7D"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/UiRepository/AutoDeleteImagesCustomResource/Default": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "UiRepositoryAutoDeleteImagesCustomResourceF78F5ED0"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/Custom::ECRAutoDeleteImagesCustomResourceProvider/Role": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CustomECRAutoDeleteImagesCustomResourceProviderRole665F2773"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/Custom::ECRAutoDeleteImagesCustomResourceProvider/Handler": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CustomECRAutoDeleteImagesCustomResourceProviderHandler8D89C030"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/UiAppRunnerServiceRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "UiAppRunnerServiceRole4742D0C0"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/UiAppRunnerServiceRole/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "UiAppRunnerServiceRoleDefaultPolicy40BCB240"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/UiAppRunnerService": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "UiAppRunnerService"
+          }
+        ],
         "/MSAInvoiceAuditFullStack/BucketNotificationsHandler050a0587b7544547bf325f094a3db834/Role/Resource": [
           {
             "type": "aws:cdk:logicalId",
@@ -304,6 +346,12 @@
           {
             "type": "aws:cdk:logicalId",
             "data": "StateMachineArn"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/AppRunnerUrl": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AppRunnerUrl"
           }
         ],
         "/MSAInvoiceAuditFullStack/CDKMetadata/Default": [

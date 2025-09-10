@@ -12,7 +12,10 @@ from aws_cdk import (
     Duration,
     RemovalPolicy,
     Stack,
+    aws_apprunner as apprunner,
     aws_dynamodb as dynamodb,
+    aws_ecr as ecr,
+    aws_ecr_assets as ecr_assets,
     aws_iam as iam,
     aws_lambda as _lambda,
     aws_s3 as s3,
@@ -48,6 +51,10 @@ class MSAInvoiceAuditFullStack(Stack):
                 resources=[self.state_machine.state_machine_arn],
             )
         )
+
+        self.ui_repository = self._create_ui_repository()
+
+        self.ui_service = self._create_app_runner_service()
 
         self._configure_ingestion_notifications()
         self._create_outputs()
@@ -370,3 +377,116 @@ class MSAInvoiceAuditFullStack(Stack):
             value=self.state_machine.state_machine_arn,
             description="Invoice audit workflow state machine ARN",
         )
+
+        CfnOutput(
+            self,
+            "AppRunnerUrl",
+            value=f"https://{self.ui_service.attr_service_url}",
+            description="URL of the Streamlit UI hosted on App Runner",
+        )
+
+    def _create_ui_repository(self) -> ecr.Repository:
+        return ecr.Repository(
+            self,
+            "UiRepository",
+            repository_name=f"invoice-ui-{self.account}",
+            removal_policy=RemovalPolicy.DESTROY,
+            auto_delete_images=True,
+        )
+
+    def _create_app_runner_service(self) -> apprunner.CfnService:
+        image_asset = ecr_assets.DockerImageAsset(
+            self,
+            "UiImage",
+            directory="ui",
+            file="Dockerfile",
+        )
+
+        app_runner_role = iam.Role(
+            self,
+            "UiAppRunnerServiceRole",
+            assumed_by=iam.ServicePrincipal("tasks.apprunner.amazonaws.com"),
+        )
+        app_runner_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["s3:GetObject", "s3:PutObject"],
+                resources=[
+                    self.reports_bucket.bucket_arn,
+                    f"{self.reports_bucket.bucket_arn}/*",
+                ],
+            )
+        )
+        app_runner_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["s3:GetObject"],
+                resources=[
+                    self.ingestion_bucket.bucket_arn,
+                    f"{self.ingestion_bucket.bucket_arn}/*",
+                ],
+            )
+        )
+        app_runner_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["states:StartExecution", "states:DescribeExecution"],
+                resources=[self.state_machine.state_machine_arn],
+            )
+        )
+        app_runner_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["ecr:GetAuthorizationToken"],
+                resources=["*"],
+            )
+        )
+        app_runner_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "ecr:BatchGetImage",
+                    "ecr:GetDownloadUrlForLayer",
+                ],
+                resources=[self.ui_repository.repository_arn],
+            )
+        )
+        image_asset.repository.grant_pull(app_runner_role)
+
+        image_repository = apprunner.CfnService.ImageRepositoryProperty(
+            image_identifier=image_asset.image_uri,
+            image_repository_type="ECR",
+            image_configuration=apprunner.CfnService.ImageConfigurationProperty(
+                port="8501",
+                runtime_environment_variables=[
+                    apprunner.CfnService.KeyValuePairProperty(name="INGESTION_BUCKET", value=self.ingestion_bucket.bucket_name),
+                    apprunner.CfnService.KeyValuePairProperty(name="REPORTS_BUCKET", value=self.reports_bucket.bucket_name),
+                    apprunner.CfnService.KeyValuePairProperty(name="STATE_MACHINE_ARN", value=self.state_machine.state_machine_arn),
+                    apprunner.CfnService.KeyValuePairProperty(name="AWS_DEFAULT_REGION", value=self.region),
+                ],
+            ),
+        )
+
+        source_configuration = apprunner.CfnService.SourceConfigurationProperty(
+            auto_deployments_enabled=True,
+            authentication_configuration=apprunner.CfnService.AuthenticationConfigurationProperty(
+                access_role_arn=app_runner_role.role_arn,
+            ),
+            image_repository=image_repository,
+        )
+
+        service = apprunner.CfnService(
+            self,
+            "UiAppRunnerService",
+            service_name=f"invoice-ui-{self.region}",
+            source_configuration=source_configuration,
+            instance_configuration=apprunner.CfnService.InstanceConfigurationProperty(
+                cpu="2 vCPU",
+                memory="4 GB",
+            ),
+            health_check_configuration=apprunner.CfnService.HealthCheckConfigurationProperty(
+                protocol="HTTP",
+                path="/",
+                interval=30,
+                timeout=10,
+                healthy_threshold=1,
+                unhealthy_threshold=3,
+            ),
+        )
+
+        return service

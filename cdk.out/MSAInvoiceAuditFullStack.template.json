@@ -1778,6 +1778,437 @@
     "aws:cdk:path": "MSAInvoiceAuditFullStack/InvoiceAuditStateMachine/Resource"
    }
   },
+  "UiRepository74A54B7D": {
+   "Type": "AWS::ECR::Repository",
+   "Properties": {
+    "RepositoryName": {
+     "Fn::Join": [
+      "",
+      [
+       "invoice-ui-",
+       {
+        "Ref": "AWS::AccountId"
+       }
+      ]
+     ]
+    },
+    "Tags": [
+     {
+      "Key": "aws-cdk:auto-delete-images",
+      "Value": "true"
+     },
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ]
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/UiRepository/Resource"
+   }
+  },
+  "UiRepositoryAutoDeleteImagesCustomResourceF78F5ED0": {
+   "Type": "Custom::ECRAutoDeleteImages",
+   "Properties": {
+    "ServiceToken": {
+     "Fn::GetAtt": [
+      "CustomECRAutoDeleteImagesCustomResourceProviderHandler8D89C030",
+      "Arn"
+     ]
+    },
+    "RepositoryName": {
+     "Ref": "UiRepository74A54B7D"
+    }
+   },
+   "DependsOn": [
+    "UiRepository74A54B7D"
+   ],
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/UiRepository/AutoDeleteImagesCustomResource/Default"
+   }
+  },
+  "CustomECRAutoDeleteImagesCustomResourceProviderRole665F2773": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Version": "2012-10-17",
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ]
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+     }
+    ],
+    "Policies": [
+     {
+      "PolicyName": "Inline",
+      "PolicyDocument": {
+       "Version": "2012-10-17",
+       "Statement": [
+        {
+         "Effect": "Allow",
+         "Action": [
+          "ecr:BatchDeleteImage",
+          "ecr:DescribeRepositories",
+          "ecr:ListImages",
+          "ecr:ListTagsForResource"
+         ],
+         "Resource": [
+          {
+           "Fn::Join": [
+            "",
+            [
+             "arn:",
+             {
+              "Ref": "AWS::Partition"
+             },
+             ":ecr:",
+             {
+              "Ref": "AWS::Region"
+             },
+             ":",
+             {
+              "Ref": "AWS::AccountId"
+             },
+             ":repository/*"
+            ]
+           ]
+          }
+         ],
+         "Condition": {
+          "StringEquals": {
+           "ecr:ResourceTag/aws-cdk:auto-delete-images": "true"
+          }
+         }
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/Custom::ECRAutoDeleteImagesCustomResourceProvider/Role"
+   }
+  },
+  "CustomECRAutoDeleteImagesCustomResourceProviderHandler8D89C030": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+     },
+     "S3Key": "e024e432dbd64a0923f6308842181e502c39dd8287ee2dbae98472ec78a5097f.zip"
+    },
+    "Timeout": 900,
+    "MemorySize": 128,
+    "Handler": "index.handler",
+    "Role": {
+     "Fn::GetAtt": [
+      "CustomECRAutoDeleteImagesCustomResourceProviderRole665F2773",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs18.x",
+    "Description": {
+     "Fn::Join": [
+      "",
+      [
+       "Lambda function for auto-deleting images in ",
+       {
+        "Ref": "UiRepository74A54B7D"
+       },
+       " repository."
+      ]
+     ]
+    }
+   },
+   "DependsOn": [
+    "CustomECRAutoDeleteImagesCustomResourceProviderRole665F2773"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/Custom::ECRAutoDeleteImagesCustomResourceProvider/Handler",
+    "aws:asset:path": "asset.e024e432dbd64a0923f6308842181e502c39dd8287ee2dbae98472ec78a5097f",
+    "aws:asset:property": "Code"
+   }
+  },
+  "UiAppRunnerServiceRole4742D0C0": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "tasks.apprunner.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/UiAppRunnerServiceRole/Resource"
+   }
+  },
+  "UiAppRunnerServiceRoleDefaultPolicy40BCB240": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "s3:GetObject",
+        "s3:PutObject"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "ReportsBucket4E7C5994",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "ReportsBucket4E7C5994",
+             "Arn"
+            ]
+           },
+           "/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": "s3:GetObject",
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "IngestionBucket917A3A3A",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "IngestionBucket917A3A3A",
+             "Arn"
+            ]
+           },
+           "/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": [
+        "states:StartExecution",
+        "states:DescribeExecution"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Ref": "InvoiceAuditStateMachine780A2967"
+       }
+      },
+      {
+       "Action": "ecr:GetAuthorizationToken",
+       "Effect": "Allow",
+       "Resource": "*"
+      },
+      {
+       "Action": [
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "UiRepository74A54B7D",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":ecr:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":repository/",
+          {
+           "Fn::Sub": "cdk-hnb659fds-container-assets-${AWS::AccountId}-${AWS::Region}"
+          }
+         ]
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "UiAppRunnerServiceRoleDefaultPolicy40BCB240",
+    "Roles": [
+     {
+      "Ref": "UiAppRunnerServiceRole4742D0C0"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/UiAppRunnerServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "UiAppRunnerService": {
+   "Type": "AWS::AppRunner::Service",
+   "Properties": {
+    "HealthCheckConfiguration": {
+     "HealthyThreshold": 1,
+     "Interval": 30,
+     "Path": "/",
+     "Protocol": "HTTP",
+     "Timeout": 10,
+     "UnhealthyThreshold": 3
+    },
+    "InstanceConfiguration": {
+     "Cpu": "2 vCPU",
+     "Memory": "4 GB"
+    },
+    "ServiceName": {
+     "Fn::Join": [
+      "",
+      [
+       "invoice-ui-",
+       {
+        "Ref": "AWS::Region"
+       }
+      ]
+     ]
+    },
+    "SourceConfiguration": {
+     "AuthenticationConfiguration": {
+      "AccessRoleArn": {
+       "Fn::GetAtt": [
+        "UiAppRunnerServiceRole4742D0C0",
+        "Arn"
+       ]
+      }
+     },
+     "AutoDeploymentsEnabled": true,
+     "ImageRepository": {
+      "ImageConfiguration": {
+       "Port": "8501",
+       "RuntimeEnvironmentVariables": [
+        {
+         "Name": "INGESTION_BUCKET",
+         "Value": {
+          "Ref": "IngestionBucket917A3A3A"
+         }
+        },
+        {
+         "Name": "REPORTS_BUCKET",
+         "Value": {
+          "Ref": "ReportsBucket4E7C5994"
+         }
+        },
+        {
+         "Name": "STATE_MACHINE_ARN",
+         "Value": {
+          "Ref": "InvoiceAuditStateMachine780A2967"
+         }
+        },
+        {
+         "Name": "AWS_DEFAULT_REGION",
+         "Value": {
+          "Ref": "AWS::Region"
+         }
+        }
+       ]
+      },
+      "ImageIdentifier": {
+       "Fn::Sub": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/cdk-hnb659fds-container-assets-${AWS::AccountId}-${AWS::Region}:c99d392ac6716adcd5f5bd0ed467c88084bfe7541333e8a14980207759d46634"
+      },
+      "ImageRepositoryType": "ECR"
+     }
+    },
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/UiAppRunnerService"
+   }
+  },
   "BucketNotificationsHandler050a0587b7544547bf325f094a3db834RoleB6FB88EC": {
    "Type": "AWS::IAM::Role",
    "Properties": {
@@ -1892,7 +2323,7 @@
   "CDKMetadata": {
    "Type": "AWS::CDK::Metadata",
    "Properties": {
-    "Analytics": "v2:deflate64:H4sIAAAAAAAA/1VQQW6DMBB8S+6LS8qh5wapUqVGRbR3ZGwn2QI2Yu1UCPnvNYaQ5jSzs6PZsZ/ZPk1ZuuO/lAjZJC3WbPqyXDQQpGqijE0HJxplIT/plS1QmBbFeJfXeRkOnJSHlne15GwKnkINHRKh0fDmtLAzCfKNe5Cj5p2R4fw3r1s1LyPxgLxjU2kWLeL99MI8UFZxImWJvc4AZFV/WrOpspwaYh+xzbu+mkY9GkLDi0GhILzcqiMXF9Tx2v/Ze8gdWdOViowbxFJn4w+rYjBXlGqA2CaknFGfYTOLaK6GdSa2+UPkp7O9i9+dGy3x9lNH3vchxEMx2ovRTxnbZ+xl90OIyeC0xU6xcsE/Zi8WbdUBAAA="
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/1VRTW/CMAz9LbuHDNbDzoNpEtLQKrZ7FVIDXpukilMmVOW/z03K18nv2U9+z8mLXMzncv6k/mim62bW4k4O30HpRnCrGqiQw7LXDQSx2tsJ5VK6FvX51p54JktFEEWrzK5WcmBNCd4gETorPnqrwwi4fcFR1GerjKvZ/kftWhiHCUSByshh63Iv1Zt1RlFQUSkiCCTfxiIoQLefdlMVFDUkP1OatT25Bh4FnPDoUIPgywNslD6iTW73PArQnoNA5wiD88n/jt1gPp7Vl0zvjt/Er406QI6nus731oKXown4E5tHseopOLMFcr3X+dorfhiV3p2wBi/SNg55QHsQV7FO4spPnORVzyu/+tD16TdXztZ4+YgNR+IlUZTncHT2uZCLQr4+/RLijKMGNCC3uf4DPQLp1jQCAAA="
    },
    "Metadata": {
     "aws:cdk:path": "MSAInvoiceAuditFullStack/CDKMetadata/Default"
@@ -1923,6 +2354,23 @@
    "Description": "Invoice audit workflow state machine ARN",
    "Value": {
     "Ref": "InvoiceAuditStateMachine780A2967"
+   }
+  },
+  "AppRunnerUrl": {
+   "Description": "URL of the Streamlit UI hosted on App Runner",
+   "Value": {
+    "Fn::Join": [
+     "",
+     [
+      "https://",
+      {
+       "Fn::GetAtt": [
+        "UiAppRunnerService",
+        "ServiceUrl"
+       ]
+      }
+     ]
+    ]
    }
   }
  },
