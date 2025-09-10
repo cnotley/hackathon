@@ -27,6 +27,7 @@ from aws_cdk import (
 )
 from constructs import Construct
 import json
+import os
 
 
 class MSAInvoiceAuditFullStack(Stack):
@@ -347,62 +348,56 @@ def handler(event, _context):
     
     def _create_sagemaker_endpoint(self) -> None:
         """Create SageMaker endpoint for anomaly detection."""
-        # SageMaker execution role
-        sagemaker_role = iam.Role(
+        execution_role = iam.Role(
             self,
-            "MSASageMakerRole",
-            assumed_by=iam.ServicePrincipal("sagemaker.amazonaws.com"),
-            managed_policies=[
-                iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSageMakerFullAccess")
-            ]
+            "MSASageMakerExecutionRole",
+            assumed_by=iam.ServicePrincipal("sagemaker.amazonaws.com")
         )
-        
-        # SageMaker model (using built-in algorithm for anomaly detection)
-        self.sagemaker_model = sagemaker.CfnModel(
+        execution_role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSageMakerFullAccess")
+        )
+
+        image_uri = os.getenv("SAGEMAKER_IMAGE_URI", "382416733822.dkr.ecr.us-east-1.amazonaws.com/xgboost:latest")
+        model_data_url = os.getenv("SAGEMAKER_MODEL_DATA", "s3://invoice-model-artifacts/isolation-forest/model.tar.gz")
+
+        anomaly_model = sagemaker.CfnModel(
             self,
             "MSAAnomalyDetectionModel",
-            execution_role_arn=sagemaker_role.role_arn,
-            model_name="msa-anomaly-detection-model",
+            execution_role_arn=execution_role.role_arn,
+            model_name=f"{self.stack_name.lower()}-anomaly-model",
             primary_container=sagemaker.CfnModel.ContainerDefinitionProperty(
-                image="382416733822.dkr.ecr.us-east-1.amazonaws.com/xgboost:latest",
-                mode="SingleModel"
+                image=image_uri,
+                model_data_url=model_data_url
             )
         )
-        
-        # SageMaker endpoint configuration
-        self.sagemaker_endpoint_config = sagemaker.CfnEndpointConfig(
+
+        endpoint_config = sagemaker.CfnEndpointConfig(
             self,
             "MSAAnomalyDetectionEndpointConfig",
-            endpoint_config_name="msa-anomaly-detection-endpoint-config",
+            endpoint_config_name=f"{self.stack_name.lower()}-anomaly-endpoint-config",
             production_variants=[
                 sagemaker.CfnEndpointConfig.ProductionVariantProperty(
-                    model_name=self.sagemaker_model.model_name,
+                    model_name=anomaly_model.attr_model_name,
                     variant_name="primary",
                     initial_instance_count=1,
-                    instance_type="ml.t2.medium",
+                    instance_type="ml.m5.large",
                     initial_variant_weight=1.0
                 )
             ]
         )
-        
-        # SageMaker endpoint
+
         self.sagemaker_endpoint = sagemaker.CfnEndpoint(
             self,
             "MSAAnomalyDetectionEndpoint",
-            endpoint_name="msa-anomaly-detection-endpoint",
-            endpoint_config_name=self.sagemaker_endpoint_config.endpoint_config_name
+            endpoint_name=f"{self.stack_name.lower()}-anomaly-endpoint",
+            endpoint_config_name=endpoint_config.attr_endpoint_config_name
         )
-        
-        # Add SageMaker permissions to Lambda role
-        self.agent_lambda.role.add_to_policy(
+
+        self.agent_lambda.add_to_role_policy(
             iam.PolicyStatement(
                 effect=iam.Effect.ALLOW,
-                actions=[
-                    "sagemaker:InvokeEndpoint"
-                ],
-                resources=[
-                    f"arn:aws:sagemaker:{self.region}:{self.account}:endpoint/{self.sagemaker_endpoint.endpoint_name}"
-                ]
+                actions=["sagemaker:InvokeEndpoint"],
+                resources=[self.sagemaker_endpoint.attr_endpoint_arn]
             )
         )
     
@@ -657,40 +652,25 @@ def handler(event, _context):
     
     def _create_ui_components(self) -> None:
         """Create UI components (ECR repository and App Runner service)."""
-        # ECR repository for Streamlit app
+
         self.ecr_repository = ecr.Repository(
             self,
             "MSAUIRepository",
-            repository_name="msa-invoice-audit-ui",
+            repository_name=f"{self.stack_name.lower()}-ui",
             image_scan_on_push=True,
-            lifecycle_rules=[
-                ecr.LifecycleRule(
-                    description="Keep only 10 most recent images",
-                    max_image_count=10,
-                    rule_priority=1
-                )
-            ],
+            lifecycle_rules=[ecr.LifecycleRule(max_image_count=10)],
             removal_policy=RemovalPolicy.DESTROY
         )
-        
-        # App Runner IAM role
+
         app_runner_role = iam.Role(
             self,
             "MSAUIAppRunnerRole",
-            assumed_by=iam.ServicePrincipal("tasks.apprunner.amazonaws.com"),
-            description="IAM role for MSA Invoice Audit UI App Runner service"
+            assumed_by=iam.ServicePrincipal("tasks.apprunner.amazonaws.com")
         )
-        
-        # Add S3 permissions
         app_runner_role.add_to_policy(
             iam.PolicyStatement(
                 effect=iam.Effect.ALLOW,
-                actions=[
-                    "s3:GetObject",
-                    "s3:PutObject",
-                    "s3:DeleteObject",
-                    "s3:ListBucket"
-                ],
+                actions=["s3:GetObject", "s3:PutObject", "s3:ListBucket"],
                 resources=[
                     self.ingestion_bucket.bucket_arn,
                     f"{self.ingestion_bucket.bucket_arn}/*",
@@ -699,40 +679,24 @@ def handler(event, _context):
                 ]
             )
         )
-        
-        # Add Step Functions permissions
         app_runner_role.add_to_policy(
             iam.PolicyStatement(
                 effect=iam.Effect.ALLOW,
-                actions=[
-                    "states:StartExecution",
-                    "states:DescribeExecution",
-                    "states:ListExecutions"
-                ],
-                resources=[
-                    self.step_function.state_machine_arn,
-                    f"{self.step_function.state_machine_arn}:*"
-                ]
+                actions=["states:StartExecution", "states:DescribeExecution"],
+                resources=[self.step_function.state_machine_arn]
             )
         )
-        
-        # Add Bedrock permissions
         app_runner_role.add_to_policy(
             iam.PolicyStatement(
                 effect=iam.Effect.ALLOW,
-                actions=[
-                    "bedrock:InvokeAgent",
-                    "bedrock:GetAgent",
-                    "bedrock:ListAgents"
-                ],
+                actions=["bedrock:InvokeAgent"],
                 resources=[
                     f"arn:aws:bedrock:{self.region}:{self.account}:agent/{self.bedrock_agent.attr_agent_id}",
                     f"arn:aws:bedrock:{self.region}:{self.account}:agent-alias/{self.bedrock_agent.attr_agent_id}/{self.bedrock_agent_alias.attr_agent_alias_id}"
                 ]
             )
         )
-        
-        # App Runner access role for ECR
+
         access_role = iam.Role(
             self,
             "MSAUIAppRunnerAccessRole",
@@ -741,66 +705,50 @@ def handler(event, _context):
                 iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSAppRunnerServicePolicyForECRAccess")
             ]
         )
-        
-        # App Runner service
+
+        environment_variables = [
+            apprunner.CfnService.KeyValuePairProperty(name="INGESTION_BUCKET", value=self.ingestion_bucket.bucket_name),
+            apprunner.CfnService.KeyValuePairProperty(name="REPORTS_BUCKET", value=self.reports_bucket.bucket_name),
+            apprunner.CfnService.KeyValuePairProperty(name="STEP_FUNCTION_ARN", value=self.step_function.state_machine_arn),
+            apprunner.CfnService.KeyValuePairProperty(name="BEDROCK_AGENT_ID", value=self.bedrock_agent.attr_agent_id),
+            apprunner.CfnService.KeyValuePairProperty(name="BEDROCK_AGENT_ALIAS_ID", value=self.bedrock_agent_alias.attr_agent_alias_id),
+            apprunner.CfnService.KeyValuePairProperty(name="AWS_DEFAULT_REGION", value=self.region)
+        ]
+
         self.app_runner_service = apprunner.CfnService(
             self,
             "MSAUIAppRunnerService",
-            service_name="msa-invoice-audit-ui",
+            service_name=f"{self.stack_name.lower()}-ui-service",
             source_configuration=apprunner.CfnService.SourceConfigurationProperty(
                 auto_deployments_enabled=True,
+                authentication_configuration=apprunner.CfnService.AuthenticationConfigurationProperty(
+                    access_role_arn=access_role.role_arn
+                ),
                 image_repository=apprunner.CfnService.ImageRepositoryProperty(
                     image_identifier=f"{self.ecr_repository.repository_uri}:latest",
+                    image_repository_type="ECR",
                     image_configuration=apprunner.CfnService.ImageConfigurationProperty(
                         port="8501",
-                        runtime_environment_variables=[
-                            apprunner.CfnService.KeyValuePairProperty(
-                                name="INGESTION_BUCKET",
-                                value=self.ingestion_bucket.bucket_name
-                            ),
-                            apprunner.CfnService.KeyValuePairProperty(
-                                name="REPORTS_BUCKET",
-                                value=self.reports_bucket.bucket_name
-                            ),
-                            apprunner.CfnService.KeyValuePairProperty(
-                                name="STEP_FUNCTION_ARN",
-                                value=self.step_function.state_machine_arn
-                            ),
-                            apprunner.CfnService.KeyValuePairProperty(
-                                name="BEDROCK_AGENT_ID",
-                                value=self.bedrock_agent.attr_agent_id
-                            ),
-                            apprunner.CfnService.KeyValuePairProperty(
-                                name="BEDROCK_AGENT_ALIAS_ID",
-                                value=self.bedrock_agent_alias.attr_agent_alias_id
-                            ),
-                            apprunner.CfnService.KeyValuePairProperty(
-                                name="AWS_DEFAULT_REGION",
-                                value=self.region
-                            )
-                        ]
-                    ),
-                    image_repository_type="ECR"
-                ),
-                access_role_arn=access_role.role_arn
+                        runtime_environment_variables=environment_variables
+                    )
+                )
             ),
             instance_configuration=apprunner.CfnService.InstanceConfigurationProperty(
-                cpu="1 vCPU",
-                memory="2 GB",
+                cpu="2 vCPU",
+                memory="4 GB",
                 instance_role_arn=app_runner_role.role_arn
             ),
             health_check_configuration=apprunner.CfnService.HealthCheckConfigurationProperty(
                 protocol="HTTP",
-                path="/",
+                path="/health",
                 interval=30,
                 timeout=10,
                 healthy_threshold=2,
                 unhealthy_threshold=3
             )
         )
-        
-        # CloudWatch log group
-        self.log_group = logs.LogGroup(
+
+        logs.LogGroup(
             self,
             "MSAUILogGroup",
             log_group_name="/aws/apprunner/msa-invoice-audit-ui",
