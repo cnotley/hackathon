@@ -108,6 +108,7 @@ class InvoiceIngestionStack(Stack):
         # Create IAM role for Lambda
         lambda_role = iam.Role(
             self,
+<<<<<<< HEAD
             "IngestionLambdaRole",
             assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
             managed_policies=[
@@ -115,6 +116,16 @@ class InvoiceIngestionStack(Stack):
                     "service-role/AWSLambdaBasicExecutionRole"
                 )
             ]
+=======
+            "SeedRatesFn",
+            code=_lambda.Code.from_asset("lambda"),
+            handler="seeding.seed_rates",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            timeout=Duration.seconds(60),
+            environment={"MWO_TABLE_NAME": table.table_name},
+            layers=[common_layer],
+            vpc=vpc,
+>>>>>>> 09810e80416ec733278d3f7f793b70796de9701f
         )
         
         # Add S3 permissions
