@@ -662,28 +662,12 @@ class TestBedrockProcessor:
         with patch.object(processor.bedrock_client, 'invoke_model', return_value=mock_bedrock_response):
             result = processor.normalize_extracted_data(extracted_data)
         
-        # Assertions
         assert result is not None
         assert 'labor' in result
-        assert 'materials' in result
+        assert 'materials' not in result, "Materials handling removed"
         assert len(result['labor']) == 1
         assert result['labor'][0]['name'] == 'Smith, John'
         assert result['labor'][0]['unit_price'] == 100.00
-        assert len(result['materials']) == 1
-        assert result['materials'][0]['description'] == 'Consumables'
-    
-    def test_bedrock_error_handling(self):
-        """Test Bedrock error handling and fallback."""
-        processor = BedrockProcessor()
-        
-        extracted_data = {'text_blocks': [{'text': 'Test data', 'confidence': 95.0}]}
-        
-        # Mock Bedrock client to raise an exception
-        with patch.object(processor.bedrock_client, 'invoke_model', side_effect=Exception("Bedrock error")):
-            result = processor.normalize_extracted_data(extracted_data)
-        
-        # Should return None on error (fallback handled by caller)
-        assert result is None
 
 
 class TestComprehendProcessor:

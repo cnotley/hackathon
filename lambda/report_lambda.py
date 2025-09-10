@@ -394,18 +394,14 @@ class ExcelReportGenerator:
             ws.delete_rows(1, ws.max_row)
             
             # Calculate totals
-            as_presented_labor = metadata.get('labor_total', 77000)  # Default from requirements
+            as_presented_labor = metadata.get('labor_total', 77000)
             total_savings = flags_data.get('total_savings', 0)
             as_analyzed_labor = as_presented_labor - total_savings
             
-            # Summary data
             summary_data = [
                 ['Category', 'As Presented', 'As Analyzed', 'Savings'],
                 ['Labor Costs', f"${as_presented_labor:,.2f}", f"${as_analyzed_labor:,.2f}", f"${total_savings:,.2f}"],
-                ['Material Costs', f"${metadata.get('material_total', 71478.04):,.2f}", 
-                 f"${metadata.get('material_total', 71478.04):,.2f}", "$0.00"],
-                ['Total Project', f"${as_presented_labor + metadata.get('material_total', 71478.04):,.2f}", 
-                 f"${as_analyzed_labor + metadata.get('material_total', 71478.04):,.2f}", f"${total_savings:,.2f}"]
+                ['Total Project', f"${as_presented_labor:,.2f}", f"${as_analyzed_labor:,.2f}", f"${total_savings:,.2f}"]
             ]
             
             # Add data to worksheet
@@ -470,6 +466,9 @@ class ExcelReportGenerator:
             
             # Get labor data from extracted data
             labor_entries = extracted_data.get('normalized_data', {}).get('labor', [])
+            if extracted_data.get('normalized_data', {}).get('materials'):
+                raise ValueError("Materials handling removed")
+            
             rate_variances = {v.get('worker'): v for v in flags_data.get('rate_variances', [])}
             
             row_idx = 2
@@ -952,6 +951,9 @@ class MemoryOptimizedExcelGenerator(ExcelReportGenerator):
             headers = ['Worker Name', 'Labor Type', 'Hours', 'Rate', 'Total', 'MSA Rate', 'Variance', 'Savings']
             
             labor_entries = extracted_data.get('normalized_data', {}).get('labor', [])
+            if extracted_data.get('normalized_data', {}).get('materials'):
+                raise ValueError("Materials handling removed")
+            
             rate_variances = {v.get('worker'): v for v in flags_data.get('rate_variances', [])}
             
             # Build data rows
@@ -1237,6 +1239,14 @@ class EnhancedReportManager(ReportManager):
             if field not in flags_data:
                 logger.warning(f"Missing required flags field: {field}")
                 flags_data[field] = [] if field != 'total_savings' else 0
+
+        total_savings = flags_data.get('total_savings', 0)
+        rate_variances = flags_data.get('rate_variances', [])
+        overtime_violations = flags_data.get('overtime_violations', [])
+        anomalies = flags_data.get('anomalies', [])
+
+        if metadata.get('material_total'):
+            raise ReportValidationError("Materials handling removed")
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:

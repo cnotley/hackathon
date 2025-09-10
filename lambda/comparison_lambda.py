@@ -78,6 +78,9 @@ class DataValidator:
             labor_data = extracted_data.get('normalized_data', {}).get('labor', [])
             corrected_labor = []
             
+            if extracted_data.get('normalized_data', {}).get('materials'):
+                raise ValidationError("Materials handling removed")
+            
             for i, labor in enumerate(labor_data):
                 labor_errors = []
                 corrected_labor_entry = labor.copy()
@@ -122,49 +125,12 @@ class DataValidator:
                 
                 corrected_labor.append(corrected_labor_entry)
             
-            # Validate materials data
-            materials_data = extracted_data.get('normalized_data', {}).get('materials', [])
-            corrected_materials = []
-            
-            for i, material in enumerate(materials_data):
-                material_errors = []
-                corrected_material_entry = material.copy()
-                
-                # Check for negative values
-                unit_price = material.get('unit_price', 0)
-                quantity = material.get('quantity', 0)
-                total_cost = material.get('total_cost', 0)
-                
-                if unit_price < 0:
-                    material_errors.append(f"Negative unit_price: {unit_price}")
-                    corrected_material_entry['unit_price'] = abs(unit_price)
-                    validation_results['warnings'].append(f"Material entry {i}: Corrected negative unit_price to {abs(unit_price)}")
-                
-                if quantity < 0:
-                    material_errors.append(f"Negative quantity: {quantity}")
-                    corrected_material_entry['quantity'] = abs(quantity)
-                    validation_results['warnings'].append(f"Material entry {i}: Corrected negative quantity to {abs(quantity)}")
-                
-                if total_cost < 0:
-                    material_errors.append(f"Negative total_cost: {total_cost}")
-                    corrected_material_entry['total_cost'] = abs(total_cost)
-                    validation_results['warnings'].append(f"Material entry {i}: Corrected negative total_cost to {abs(total_cost)}")
-                
-                # Check for missing description
-                if not material.get('description') or material.get('description', '').strip() == '':
-                    material_errors.append("Missing or empty material description")
-                
-                if material_errors:
-                    validation_results['errors'].extend([f"Material entry {i}: {error}" for error in material_errors])
-                
-                corrected_materials.append(corrected_material_entry)
-            
             # Update corrected data
             if 'normalized_data' not in validation_results['corrected_data']:
                 validation_results['corrected_data']['normalized_data'] = {}
             
             validation_results['corrected_data']['normalized_data']['labor'] = corrected_labor
-            validation_results['corrected_data']['normalized_data']['materials'] = corrected_materials
+            validation_results['corrected_data']['normalized_data'].pop('materials', None)
             
             # Set validation status
             if validation_results['errors']:
@@ -297,12 +263,14 @@ class BedrockAnalyzer:
         discrepancies = comparison_results.get('discrepancies', [])
         total_savings = comparison_results.get('summary', {}).get('total_potential_savings', 0)
         
+        if extracted_data.get('normalized_data', {}).get('materials'):
+            raise ValidationError("Materials handling removed")
+
         prompt = f"""
 You are an expert invoice auditor analyzing discrepancies found in contractor invoices against MSA (Master Services Agreement) standards.
 
 EXTRACTED DATA SUMMARY:
 - Total Labor Entries: {len(extracted_data.get('normalized_data', {}).get('labor', []))}
-- Total Materials Entries: {len(extracted_data.get('normalized_data', {}).get('materials', []))}
 
 DISCREPANCIES FOUND: {len(discrepancies)}
 POTENTIAL SAVINGS: ${total_savings:,.2f}
@@ -415,6 +383,9 @@ class AnomalyDetector:
         """Extract numerical features for anomaly detection."""
         features = []
         
+        if extracted_data.get('normalized_data', {}).get('materials'):
+            raise ValidationError("Materials handling removed")
+        
         # Extract labor features
         labor_data = extracted_data.get('normalized_data', {}).get('labor', [])
         for labor in labor_data:
@@ -422,20 +393,8 @@ class AnomalyDetector:
                 float(labor.get('unit_price', 0)),
                 float(labor.get('total_hours', 0)),
                 float(labor.get('total_cost', 0)),
-                len(labor.get('name', '')),  # Name length as feature
-                hash(labor.get('type', 'RS')) % 1000  # Labor type as numeric
-            ]
-            features.append(feature_vector)
-        
-        # Extract material features
-        materials_data = extracted_data.get('normalized_data', {}).get('materials', [])
-        for material in materials_data:
-            feature_vector = [
-                float(material.get('unit_price', 0)),
-                float(material.get('quantity', 0)),
-                float(material.get('total_cost', 0)),
-                len(material.get('description', '')),  # Description length
-                0  # Placeholder for material type
+                len(labor.get('name', '')),
+                hash(labor.get('type', 'RS')) % 1000
             ]
             features.append(feature_vector)
         
@@ -446,8 +405,10 @@ class AnomalyDetector:
         anomalies = []
         predictions = sagemaker_result.get('predictions', [])
         
-        # Process labor anomalies
         labor_data = extracted_data.get('normalized_data', {}).get('labor', [])
+        if extracted_data.get('normalized_data', {}).get('materials'):
+            raise ValidationError("Materials handling removed")
+        
         for i, (labor, prediction) in enumerate(zip(labor_data, predictions[:len(labor_data)])):
             if prediction.get('anomaly_score', 0) > ANOMALY_THRESHOLD:
                 anomalies.append({
@@ -461,21 +422,6 @@ class AnomalyDetector:
                     'severity': 'high' if prediction.get('anomaly_score', 0) > 3.0 else 'medium'
                 })
         
-        # Process material anomalies
-        materials_data = extracted_data.get('normalized_data', {}).get('materials', [])
-        material_predictions = predictions[len(labor_data):]
-        for material, prediction in zip(materials_data, material_predictions):
-            if prediction.get('anomaly_score', 0) > ANOMALY_THRESHOLD:
-                anomalies.append({
-                    'type': 'material_anomaly',
-                    'category': 'statistical_outlier',
-                    'item': material.get('description', 'Unknown'),
-                    'anomaly_score': prediction.get('anomaly_score'),
-                    'value': material.get('total_cost', 0),
-                    'description': f"Material cost ${material.get('total_cost', 0):,.2f} is statistically anomalous (e.g., $6,313 respirators)",
-                    'severity': 'high' if prediction.get('anomaly_score', 0) > 3.0 else 'medium'
-                })
-        
         return anomalies
     
     def _statistical_anomaly_detection(self, extracted_data: Dict) -> List[Dict[str, Any]]:
@@ -483,10 +429,10 @@ class AnomalyDetector:
         anomalies = []
         
         try:
-            # Analyze labor costs with validation
             labor_data = extracted_data.get('normalized_data', {}).get('labor', [])
-            if labor_data and len(labor_data) > 1:  # Need at least 2 data points for statistics
-                # Filter out negative and zero values, validate data
+            if extracted_data.get('normalized_data', {}).get('materials'):
+                raise ValidationError("Materials handling removed")
+            if labor_data and len(labor_data) > 1:
                 valid_labor_costs = []
                 valid_labor_entries = []
                 
@@ -498,7 +444,6 @@ class AnomalyDetector:
                             valid_labor_entries.append(labor)
                         elif cost < 0:
                             logger.warning(f"Negative labor cost detected: ${cost} for {labor.get('name', 'Unknown')}")
-                            # Flag negative values as anomalies
                             anomalies.append({
                                 'type': 'labor_anomaly',
                                 'category': 'negative_value',
@@ -512,7 +457,6 @@ class AnomalyDetector:
                         logger.warning(f"Invalid labor cost for {labor.get('name', 'Unknown')}")
                         continue
                 
-                # Perform statistical analysis on valid data
                 if len(valid_labor_costs) > 1:
                     mean_cost = np.mean(valid_labor_costs)
                     std_cost = np.std(valid_labor_costs)
@@ -531,56 +475,6 @@ class AnomalyDetector:
                                     'mean_value': round(mean_cost, 2),
                                     'std_deviation': round(std_cost, 2),
                                     'description': f"Labor cost ${cost:,.2f} is {z_score:.1f} standard deviations from mean (${mean_cost:,.2f})",
-                                    'severity': 'high' if z_score > 3.0 else 'medium'
-                                })
-            
-            # Analyze material costs with validation
-            materials_data = extracted_data.get('normalized_data', {}).get('materials', [])
-            if materials_data and len(materials_data) > 1:
-                # Filter out negative and zero values, validate data
-                valid_material_costs = []
-                valid_material_entries = []
-                
-                for material in materials_data:
-                    try:
-                        cost = float(material.get('total_cost', 0))
-                        if cost > 0 and not (np.isnan(cost) or np.isinf(cost)):
-                            valid_material_costs.append(cost)
-                            valid_material_entries.append(material)
-                        elif cost < 0:
-                            logger.warning(f"Negative material cost detected: ${cost} for {material.get('description', 'Unknown')}")
-                            # Flag negative values as anomalies
-                            anomalies.append({
-                                'type': 'material_anomaly',
-                                'category': 'negative_value',
-                                'item': material.get('description', 'Unknown'),
-                                'value': cost,
-                                'description': f"Negative material cost: ${cost:,.2f}",
-                                'severity': 'high',
-                                'validation_error': True
-                            })
-                    except (ValueError, TypeError):
-                        logger.warning(f"Invalid material cost for {material.get('description', 'Unknown')}")
-                        continue
-                
-                # Perform statistical analysis on valid data
-                if len(valid_material_costs) > 1:
-                    mean_cost = np.mean(valid_material_costs)
-                    std_cost = np.std(valid_material_costs)
-                    
-                    if std_cost > 0:
-                        for material, cost in zip(valid_material_entries, valid_material_costs):
-                            z_score = abs((cost - mean_cost) / std_cost)
-                            if z_score > ANOMALY_THRESHOLD:
-                                anomalies.append({
-                                    'type': 'material_anomaly',
-                                    'category': 'statistical_outlier',
-                                    'item': material.get('description', 'Unknown'),
-                                    'z_score': round(z_score, 2),
-                                    'value': cost,
-                                    'mean_value': round(mean_cost, 2),
-                                    'std_deviation': round(std_cost, 2),
-                                    'description': f"Material cost ${cost:,.2f} is {z_score:.1f} standard deviations from mean (${mean_cost:,.2f}) - e.g., $6,313 respirators",
                                     'severity': 'high' if z_score > 3.0 else 'medium'
                                 })
             

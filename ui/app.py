@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # Constants
 MAX_FILE_SIZE_MB = 5  # Maximum file size in MB
-SUPPORTED_FILE_TYPES = ['pdf', 'xlsx', 'xls', 'png', 'jpg', 'jpeg']
+SUPPORTED_FILE_TYPES = ['pdf']
 POLL_INTERVAL_SECONDS = 5  # Polling interval for Step Functions status
 
 # Configure Streamlit page
@@ -123,7 +123,7 @@ class FileValidator:
             return {
                 'valid': False,
                 'error': f'Unsupported file type: .{file_extension}',
-                'message': f'Supported types: {", ".join(SUPPORTED_FILE_TYPES)}'
+                'message': 'Only PDF files are supported'
             }
         
         return {
@@ -359,12 +359,7 @@ class MSAInvoiceAuditor:
         """Get content type based on file extension."""
         if filename.lower().endswith('.pdf'):
             return 'application/pdf'
-        elif filename.lower().endswith(('.xlsx', '.xls')):
-            return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        elif filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-            return 'image/jpeg'
-        else:
-            return 'application/octet-stream'
+        return 'application/octet-stream'
     
     def start_step_function_execution(self, s3_key: str, query: str = "") -> str:
         """Start Step Functions execution for invoice processing."""
@@ -579,16 +574,22 @@ def main():
         uploaded_file = st.file_uploader(
             "Choose an invoice file",
             type=SUPPORTED_FILE_TYPES,
-            help=f"Upload files up to {MAX_FILE_SIZE_MB}MB. Supported: PDF, Excel, Images"
+            help=f"Upload PDF files up to {MAX_FILE_SIZE_MB}MB"
         )
-        
+
+        non_pdf_selected = False
+        validation_result = None
         # Show file info if file is selected
         if uploaded_file is not None:
-            validation_result = FileValidator.validate_file(uploaded_file)
-            if validation_result['valid']:
-                st.info(f"📄 **{uploaded_file.name}** ({validation_result['size_mb']:.1f}MB, .{validation_result['file_type']})")
+            if not uploaded_file.name.lower().endswith('.pdf'):
+                st.error("Only PDF files are allowed. Please upload a PDF.")
+                non_pdf_selected = True
             else:
-                st.error(f"❌ {validation_result['error']}")
+                validation_result = FileValidator.validate_file(uploaded_file)
+                if validation_result['valid']:
+                    st.info(f"📄 **{uploaded_file.name}** ({validation_result['size_mb']:.1f}MB, .{validation_result['file_type']})")
+                else:
+                    st.error(f"❌ {validation_result['error']}")
         
         # Query input
         query = st.text_input(
@@ -598,7 +599,11 @@ def main():
         )
         
         # Upload and process button with enhanced validation
-        upload_disabled = uploaded_file is None or not FileValidator.validate_file(uploaded_file)['valid']
+        upload_disabled = (
+            uploaded_file is None or
+            non_pdf_selected or
+            (validation_result is not None and not validation_result['valid'])
+        )
         
         if st.button("🚀 Upload & Start Analysis", type="primary", disabled=upload_disabled):
             # Use enhanced upload with validation

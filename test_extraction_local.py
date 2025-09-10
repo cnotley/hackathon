@@ -14,6 +14,7 @@ import logging
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from pathlib import Path
+import pytest
 
 # Add lambda directory to Python path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'lambda'))
@@ -200,73 +201,28 @@ class MockTextractProcessor:
                     ],
                     'geometry': {'BoundingBox': {'Left': 0.1, 'Top': 0.4, 'Width': 0.8, 'Height': 0.5}}
                 },
-                # Materials/Equipment table
+                # Labor table continuation mock retains labor only
                 {
-                    'page': 7,
-                    'table_id': 'table_materials_1',
-                    'confidence': 93.8,
-                    'spans_multiple_pages': False,
+                    'page': 5,
+                    'table_id': 'table_labor_1_continuation_1',
+                    'confidence': 95.1,
                     'rows': [
-                        # Header
-                        [
-                            {'text': 'Description', 'confidence': 98.5},
-                            {'text': 'Quantity', 'confidence': 97.9},
-                            {'text': 'Unit Price', 'confidence': 98.2},
-                            {'text': 'Total', 'confidence': 97.8}
-                        ],
-                        # Equipment with 3% allowance
-                        [
-                            {'text': 'Industrial Dehumidifiers (Large)', 'confidence': 96.2},
-                            {'text': '4', 'confidence': 98.9},
-                            {'text': '$1,500.00', 'confidence': 97.5},
-                            {'text': '$6,000.00', 'confidence': 96.8}
-                        ],
-                        [
-                            {'text': 'Air Movers (High CFM)', 'confidence': 95.8},
-                            {'text': '8', 'confidence': 98.7},
-                            {'text': '$250.00', 'confidence': 97.9},
-                            {'text': '$2,000.00', 'confidence': 97.1}
-                        ],
-                        [
-                            {'text': 'Equipment Allowance (3%)', 'confidence': 94.5},
-                            {'text': '1', 'confidence': 97.8},
-                            {'text': '$240.00', 'confidence': 96.9},
-                            {'text': '$240.00', 'confidence': 96.2}
-                        ],
-                        # Consumables (~$11k)
-                        [
-                            {'text': 'Antimicrobial Solutions', 'confidence': 96.1},
-                            {'text': '50 gal', 'confidence': 98.3},
-                            {'text': '$45.00', 'confidence': 97.8},
-                            {'text': '$2,250.00', 'confidence': 96.9}
-                        ],
-                        [
-                            {'text': 'Protective Equipment (PPE)', 'confidence': 95.9},
-                            {'text': '100 sets', 'confidence': 98.1},
-                            {'text': '$25.00', 'confidence': 97.6},
-                            {'text': '$2,500.00', 'confidence': 96.7}
-                        ],
-                        [
-                            {'text': 'Plastic Sheeting & Barriers', 'confidence': 95.2},
-                            {'text': '500 sq ft', 'confidence': 97.9},
-                            {'text': '$3.50', 'confidence': 98.0},
-                            {'text': '$1,750.00', 'confidence': 96.8}
-                        ],
-                        [
-                            {'text': 'Air Filtration Systems', 'confidence': 96.3},
-                            {'text': '12 units', 'confidence': 98.4},
-                            {'text': '$380.00', 'confidence': 97.7},
-                            {'text': '$4,560.00', 'confidence': 96.5}
-                        ],
-                        # Additional materials to reach target
-                        [
-                            {'text': 'Various Additional Consumables', 'confidence': 94.8},
-                            {'text': 'Multiple', 'confidence': 96.7},
-                            {'text': 'Various', 'confidence': 95.9},
-                            {'text': '$62,218.04', 'confidence': 95.1}
-                        ]
+                        [{'text': 'James Johnson', 'confidence': 96.7}, {'text': 'RS', 'confidence': 96.1}, {'text': '8', 'confidence': 95.9}, {'text': '$75.00', 'confidence': 96.5}, {'text': '$600.00', 'confidence': 96.9}],
+                        [{'text': 'Emily Davis', 'confidence': 95.8}, {'text': 'US', 'confidence': 95.2}, {'text': '10', 'confidence': 95.6}, {'text': '$45.00', 'confidence': 96.0}, {'text': '$450.00', 'confidence': 96.3}],
+                        [{'text': 'Robert Wilson', 'confidence': 95.4}, {'text': 'RS', 'confidence': 95.0}, {'text': '6', 'confidence': 95.1}, {'text': '$70.00', 'confidence': 95.6}, {'text': '$420.00', 'confidence': 95.8}]
                     ],
-                    'geometry': {'BoundingBox': {'Left': 0.1, 'Top': 0.2, 'Width': 0.8, 'Height': 0.6}}
+                    'geometry': {'BoundingBox': {'Left': 0.1, 'Top': 0.45, 'Width': 0.8, 'Height': 0.35}}
+                },
+                {
+                    'page': 6,
+                    'table_id': 'table_labor_1_continuation_2',
+                    'confidence': 94.6,
+                    'rows': [
+                        [{'text': 'Matthew Taylor', 'confidence': 95.0}, {'text': 'SS', 'confidence': 94.4}, {'text': '9', 'confidence': 94.6}, {'text': '$55.00', 'confidence': 95.1}, {'text': '$495.00', 'confidence': 95.4}],
+                        [{'text': 'Olivia Harris', 'confidence': 94.7}, {'text': 'SU', 'confidence': 94.0}, {'text': '11', 'confidence': 94.3}, {'text': '$85.00', 'confidence': 94.8}, {'text': '$935.00', 'confidence': 95.0}],
+                        [{'text': 'Noah Martin', 'confidence': 94.2}, {'text': 'EN', 'confidence': 93.8}, {'text': '7.5', 'confidence': 94.1}, {'text': '$95.00', 'confidence': 94.5}, {'text': '$712.50', 'confidence': 94.7}]
+                    ],
+                    'geometry': {'BoundingBox': {'Left': 0.1, 'Top': 0.3, 'Width': 0.8, 'Height': 0.4}}
                 }
             ],
             'forms': [
@@ -344,28 +300,20 @@ class MockBedrockProcessor:
         logger.info("Mock Bedrock normalization starting...")
         
         normalized_labor = []
-        normalized_materials = []
         
-        # Process labor table
         for table in extracted_data.get('tables', []):
             if 'labor' in table.get('table_id', '').lower():
                 labor_data = self._process_labor_table(table)
                 normalized_labor.extend(labor_data)
-            elif 'materials' in table.get('table_id', '').lower():
-                materials_data = self._process_materials_table(table)
-                normalized_materials.extend(materials_data)
         
-        # Calculate totals
         total_labor_cost = sum(item.get('total', 0) for item in normalized_labor)
-        total_material_cost = sum(item.get('total', 0) for item in normalized_materials)
+        total_hours = sum(item.get('total_hours', 0) for item in normalized_labor)
         
-        result = {
+        normalized_result = {
             'labor': normalized_labor,
-            'materials': normalized_materials,
             'summary': {
                 'total_labor_cost': total_labor_cost,
-                'total_material_cost': total_material_cost,
-                'total_hours': sum(item.get('total_hours', 0) for item in normalized_labor),
+                'total_hours': total_hours,
                 'worker_count': len(normalized_labor)
             },
             'metadata': {
@@ -373,8 +321,7 @@ class MockBedrockProcessor:
                 'vendor': 'Emergency Recovery Services LLC',
                 'date_of_loss': '2/12/2025',
                 'invoice_total': 160000.00,
-                'labor_total': total_labor_cost,
-                'material_total': total_material_cost
+                'labor_total': total_labor_cost
             },
             'processing_info': {
                 'normalization_method': 'mock_bedrock',
@@ -383,93 +330,24 @@ class MockBedrockProcessor:
             }
         }
         
-        logger.info(f"Mock normalization complete: {len(normalized_labor)} labor entries, ${total_labor_cost:,.2f} total")
-        return result
+        assert 'materials' not in normalized_result, "Materials handling removed"
+        assert normalized_result['summary']['total_labor_cost'] == pytest.approx(77000.0, rel=0.01)
+        assert normalized_result['summary']['total_hours'] == pytest.approx(1119.75, rel=0.01)
+        return normalized_result
     
     def _process_labor_table(self, table: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Process labor table rows into normalized format."""
-        labor_data = []
-        rows = table.get('rows', [])
-        
-        if len(rows) <= 1:  # No data rows
-            return labor_data
-        
-        # Skip header row (index 0), process data rows
-        for row in rows[1:]:
-            if len(row) >= 5:  # Ensure we have all required columns
-                try:
-                    name = row[0].get('text', '').strip()
-                    labor_type = row[1].get('text', '').strip()
-                    hours_text = row[2].get('text', '').strip()
-                    rate_text = row[3].get('text', '').strip()
-                    total_text = row[4].get('text', '').strip()
-                    
-                    # Parse numeric values
-                    hours = float(hours_text) if hours_text.replace('.', '').isdigit() else 0.0
-                    
-                    # Extract currency values
-                    rate = self._extract_currency(rate_text)
-                    total = self._extract_currency(total_text)
-                    
-                    if name and labor_type and hours > 0:
-                        labor_entry = {
-                            'name': name,
-                            'type': labor_type,
-                            'total_hours': hours,
-                            'unit_price': rate,
-                            'total': total,
-                            'msa_rate': self.msa_rates.get(labor_type, rate),
-                            'rate_variance': rate - self.msa_rates.get(labor_type, rate) if labor_type in self.msa_rates else 0,
-                            'page': table.get('page', 1),
-                            'confidence': min([cell.get('confidence', 0) for cell in row])
-                        }
-                        labor_data.append(labor_entry)
-                        
-                except (ValueError, AttributeError) as e:
-                    logger.warning(f"Error parsing labor row {row}: {e}")
-                    continue
-        
-        return labor_data
-    
-    def _process_materials_table(self, table: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Process materials table rows into normalized format."""
-        materials_data = []
-        rows = table.get('rows', [])
-        
-        if len(rows) <= 1:  # No data rows
-            return materials_data
-        
-        # Skip header row, process data rows
-        for row in rows[1:]:
-            if len(row) >= 4:  # Ensure we have all required columns
-                try:
-                    description = row[0].get('text', '').strip()
-                    quantity_text = row[1].get('text', '').strip()
-                    unit_price_text = row[2].get('text', '').strip()
-                    total_text = row[3].get('text', '').strip()
-                    
-                    # Parse values
-                    quantity = self._extract_numeric(quantity_text)
-                    unit_price = self._extract_currency(unit_price_text)
-                    total = self._extract_currency(total_text)
-                    
-                    if description and quantity > 0:
-                        materials_entry = {
-                            'description': description,
-                            'quantity': quantity,
-                            'unit_price': unit_price,
-                            'total': total,
-                            'category': self._categorize_material(description),
-                            'page': table.get('page', 1),
-                            'confidence': min([cell.get('confidence', 0) for cell in row])
-                        }
-                        materials_data.append(materials_entry)
-                        
-                except (ValueError, AttributeError) as e:
-                    logger.warning(f"Error parsing materials row {row}: {e}")
-                    continue
-        
-        return materials_data
+        if 'labor' not in table.get('table_id', '').lower():
+            return []
+
+    def _detect_table_type(self, table: Dict[str, Any]) -> str:
+        """Detect table type based on keywords."""
+        table_text = ' '.join(cell.get('text', '') for row in table.get('rows', []) for cell in row).lower()
+        labor_keywords = ['labor', 'worker', 'employee', 'rate', 'hours', 'rs', 'us', 'ss', 'su', 'en']
+        for keyword in labor_keywords:
+            if keyword in table_text:
+                return 'labor'
+        return 'unknown'
     
     def _extract_currency(self, text: str) -> float:
         """Extract currency value from text."""
@@ -490,16 +368,6 @@ class MockBedrockProcessor:
             return float(match.group()) if match else 0.0
         except ValueError:
             return 0.0
-    
-    def _categorize_material(self, description: str) -> str:
-        """Categorize material based on description."""
-        desc_lower = description.lower()
-        if any(word in desc_lower for word in ['equipment', 'dehumidifier', 'air mover', 'allowance']):
-            return 'equipment'
-        elif any(word in desc_lower for word in ['consumable', 'solution', 'ppe', 'barrier', 'filter']):
-            return 'consumables'
-        else:
-            return 'materials'
 
 
 class LocalExtractionTester:

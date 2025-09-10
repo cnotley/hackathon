@@ -74,13 +74,10 @@ class TestMSAInvoiceAuditor:
             assert auditor.bedrock_agent_id == 'test-agent-id'
     
     def test_get_content_type(self, auditor):
-        """Test content type detection for different file types."""
+        """Test content type detection for PDF and unsupported types."""
         assert auditor._get_content_type('invoice.pdf') == 'application/pdf'
-        assert auditor._get_content_type('data.xlsx') == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        assert auditor._get_content_type('data.xls') == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        assert auditor._get_content_type('image.jpg') == 'image/jpeg'
-        assert auditor._get_content_type('image.png') == 'image/jpeg'
-        assert auditor._get_content_type('unknown.txt') == 'application/octet-stream'
+        for filename in ['data.xlsx', 'data.xls', 'image.jpg', 'image.png', 'unknown.txt']:
+            assert auditor._get_content_type(filename) == 'application/octet-stream'
     
     def test_upload_file_to_s3_success(self, auditor):
         """Test successful file upload to S3."""

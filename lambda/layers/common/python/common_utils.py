@@ -332,21 +332,11 @@ class FileTypeDetector:
     """Utility for detecting and validating file types."""
     
     MIME_TYPE_MAPPING = {
-        'application/pdf': ['.pdf'],
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-        'application/vnd.ms-excel': ['.xls'],
-        'image/png': ['.png'],
-        'image/jpeg': ['.jpg', '.jpeg'],
-        'image/jpg': ['.jpg', '.jpeg']
+        'application/pdf': ['.pdf']
     }
     
     EXTENSION_MAPPING = {
-        '.pdf': 'application/pdf',
-        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        '.xls': 'application/vnd.ms-excel',
-        '.png': 'image/png',
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg'
+        '.pdf': 'application/pdf'
     }
     
     @classmethod
@@ -379,12 +369,7 @@ class FileTypeDetector:
         """Get file category based on extension."""
         if extension == '.pdf':
             return 'document'
-        elif extension in ['.xlsx', '.xls']:
-            return 'spreadsheet'
-        elif extension in ['.png', '.jpg', '.jpeg']:
-            return 'image'
-        else:
-            return 'unknown'
+        return 'unknown'
     
     @classmethod
     def validate_file_type(cls, filename: str, content_type: str = '') -> ValidationResult:
@@ -425,7 +410,7 @@ class ConfigManager:
             'state_machine_arn': os.environ.get('STATE_MACHINE_ARN'),
             'log_level': os.environ.get('LOG_LEVEL', 'INFO'),
             'max_file_size': int(os.environ.get('MAX_FILE_SIZE', 100 * 1024 * 1024)),
-            'supported_extensions': ['.pdf', '.xlsx', '.xls', '.png', '.jpg', '.jpeg'],
+            'supported_extensions': ['.pdf'],
             'processing_timeout': int(os.environ.get('PROCESSING_TIMEOUT', 300)),
             'retry_attempts': int(os.environ.get('RETRY_ATTEMPTS', 3))
         }

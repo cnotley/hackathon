@@ -2,7 +2,7 @@
 Invoice Auditing File Ingestion Lambda Handler
 
 This module handles S3 events and orchestrates the file processing workflow
-through Step Functions. It supports PDF, Excel, and image file formats.
+through Step Functions. Only PDF invoices are supported.
 """
 
 import json
@@ -28,14 +28,9 @@ stepfunctions_client = boto3.client('stepfunctions')
 BUCKET_NAME = os.environ.get('BUCKET_NAME')
 STATE_MACHINE_ARN = os.environ.get('STATE_MACHINE_ARN')
 
-# Supported file types
+# Supported file types (PDF only)
 SUPPORTED_EXTENSIONS = {
-    '.pdf': 'application/pdf',
-    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    '.xls': 'application/vnd.ms-excel',
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg'
+    '.pdf': 'application/pdf'
 }
 
 # File size limits (in bytes)
@@ -116,6 +111,9 @@ class FileProcessor:
     
     def extract_metadata(self, file_info: Dict[str, Any]) -> Dict[str, Any]:
         """Extract metadata based on file type."""
+        if file_info.get('extension') != '.pdf':
+            raise ValueError("Only PDF files are supported")
+        
         metadata = {
             'file_name': os.path.basename(file_info['key']),
             'file_path': file_info['key'],
@@ -126,16 +124,9 @@ class FileProcessor:
             'etag': file_info['etag']
         }
         
-        # Add file-type specific metadata
-        if file_info['extension'] in ['.pdf']:
-            metadata['document_type'] = 'pdf'
-            metadata['processing_priority'] = 'high'
-        elif file_info['extension'] in ['.xlsx', '.xls']:
-            metadata['document_type'] = 'spreadsheet'
-            metadata['processing_priority'] = 'medium'
-        elif file_info['extension'] in ['.png', '.jpg', '.jpeg']:
-            metadata['document_type'] = 'image'
-            metadata['processing_priority'] = 'low'
+        # Only PDF metadata is allowed
+        metadata['document_type'] = 'pdf'
+        metadata['processing_priority'] = 'high'
         
         # Add existing S3 metadata
         metadata.update(file_info.get('metadata', {}))
@@ -236,6 +227,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.error(f"Unknown event type: {event}")
         raise ValueError("Unknown event type")
         
+    except ValueError as error:
+        logger.warning(f"Rejected event due to invalid file type: {error}")
+        return {
+            'statusCode': 400,
+            'error': 'Invalid file type'
+        }
     except Exception as e:
         logger.error(f"Error processing event: {e}")
         raise
@@ -254,6 +251,11 @@ def handle_s3_event(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             key = urllib.parse.unquote_plus(record['s3']['object']['key'], encoding='utf-8')
             
             logger.info(f"Processing file: s3://{bucket}/{key}")
+
+            file_extension = os.path.splitext(key)[1].lower()
+            if file_extension != '.pdf':
+                logger.warning(f"Rejected non-PDF file: {key}")
+                raise ValueError("Only PDF files are supported")
             
             # Initialize file processor
             file_processor = FileProcessor(bucket)
@@ -280,6 +282,9 @@ def handle_s3_event(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'record': record
             })
             
+        except ValueError:
+            # Re-raise to allow lambda_handler to return a 400 response
+            raise
         except Exception as e:
             logger.error(f"Error processing S3 record: {e}")
             results.append({
@@ -288,42 +293,34 @@ def handle_s3_event(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'error': str(e)
             })
     
-    # Process files in batches if multiple files detected
-    if len(batch_files) > 1:
-        logger.info(f"Processing {len(batch_files)} files in batch mode")
-        batch_result = handle_batch_processing(batch_files)
-        results.extend(batch_result)
-    else:
-        # Process single file normally
-        for file_data in batch_files:
-            try:
-                # Prepare workflow input
-                workflow_input = {
-                    'file_info': file_data['file_info'],
-                    'bucket': file_data['bucket'],
-                    'key': file_data['key'],
-                    'event_time': datetime.utcnow().isoformat(),
-                    'source': 's3_event',
-                    'batch_mode': False
-                }
-                
-                # Start Step Functions workflow
-                orchestrator = WorkflowOrchestrator(STATE_MACHINE_ARN)
-                execution_arn = orchestrator.start_workflow(workflow_input)
-                
-                results.append({
-                    'file': file_data['key'],
-                    'status': 'workflow_started',
-                    'execution_arn': execution_arn
-                })
-                
-            except Exception as e:
-                logger.error(f"Error processing file {file_data['key']}: {e}")
-                results.append({
-                    'file': file_data['key'],
-                    'status': 'error',
-                    'error': str(e)
-                })
+    # Only PDF files are processed; batch handling reduces to single workflow per record
+    for file_data in batch_files:
+        try:
+            workflow_input = {
+                'file_info': file_data['file_info'],
+                'bucket': file_data['bucket'],
+                'key': file_data['key'],
+                'event_time': datetime.utcnow().isoformat(),
+                'source': 's3_event',
+                'batch_mode': False
+            }
+
+            orchestrator = WorkflowOrchestrator(STATE_MACHINE_ARN)
+            execution_arn = orchestrator.start_workflow(workflow_input)
+
+            results.append({
+                'file': file_data['key'],
+                'status': 'workflow_started',
+                'execution_arn': execution_arn
+            })
+
+        except Exception as e:
+            logger.error(f"Error processing file {file_data['key']}: {e}")
+            results.append({
+                'file': file_data['key'],
+                'status': 'error',
+                'error': str(e)
+            })
     
     return {
         'statusCode': 200,
@@ -337,102 +334,8 @@ def handle_s3_event(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 
 def handle_batch_processing(batch_files: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Handle batch processing of multiple uploaded files."""
-    results = []
-    
-    try:
-        # Sort files by priority (PDF first, then Excel, then images)
-        priority_order = {'.pdf': 1, '.xlsx': 2, '.xls': 3, '.png': 4, '.jpg': 5, '.jpeg': 6}
-        
-        sorted_files = sorted(batch_files, key=lambda x: priority_order.get(
-            x['file_info'].get('extension', '').lower(), 999
-        ))
-        
-        # Create batch workflow input
-        batch_workflow_input = {
-            'batch_mode': True,
-            'files': [],
-            'batch_id': f"batch-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}",
-            'event_time': datetime.utcnow().isoformat(),
-            'source': 'batch_s3_event',
-            'total_files': len(sorted_files)
-        }
-        
-        # Process files in groups of 5 to avoid overwhelming the system
-        batch_size = 5
-        for i in range(0, len(sorted_files), batch_size):
-            batch_group = sorted_files[i:i+batch_size]
-            
-            # Prepare files for this batch group
-            group_files = []
-            for file_data in batch_group:
-                group_files.append({
-                    'file_info': file_data['file_info'],
-                    'bucket': file_data['bucket'],
-                    'key': file_data['key']
-                })
-            
-            batch_workflow_input['files'] = group_files
-            batch_workflow_input['batch_group'] = i // batch_size + 1
-            
-            # Start Step Functions workflow for this batch
-            try:
-                orchestrator = WorkflowOrchestrator(STATE_MACHINE_ARN)
-                execution_arn = orchestrator.start_workflow(batch_workflow_input.copy())
-                
-                # Record results for each file in this batch
-                for file_data in batch_group:
-                    results.append({
-                        'file': file_data['key'],
-                        'status': 'batch_workflow_started',
-                        'execution_arn': execution_arn,
-                        'batch_id': batch_workflow_input['batch_id'],
-                        'batch_group': batch_workflow_input['batch_group']
-                    })
-                
-                logger.info(f"Started batch workflow for group {batch_workflow_input['batch_group']}: {execution_arn}")
-                
-            except Exception as e:
-                logger.error(f"Error starting batch workflow for group {i//batch_size + 1}: {e}")
-                for file_data in batch_group:
-                    results.append({
-                        'file': file_data['key'],
-                        'status': 'batch_error',
-                        'error': str(e)
-                    })
-        
-    except Exception as e:
-        logger.error(f"Error in batch processing: {e}")
-        # Fallback to individual processing
-        for file_data in batch_files:
-            try:
-                workflow_input = {
-                    'file_info': file_data['file_info'],
-                    'bucket': file_data['bucket'],
-                    'key': file_data['key'],
-                    'event_time': datetime.utcnow().isoformat(),
-                    'source': 's3_event_fallback',
-                    'batch_mode': False
-                }
-                
-                orchestrator = WorkflowOrchestrator(STATE_MACHINE_ARN)
-                execution_arn = orchestrator.start_workflow(workflow_input)
-                
-                results.append({
-                    'file': file_data['key'],
-                    'status': 'fallback_workflow_started',
-                    'execution_arn': execution_arn
-                })
-                
-            except Exception as fallback_error:
-                logger.error(f"Fallback processing failed for {file_data['key']}: {fallback_error}")
-                results.append({
-                    'file': file_data['key'],
-                    'status': 'fallback_error',
-                    'error': str(fallback_error)
-                })
-    
-    return results
+    """Retained for compatibility; PDF-only ingestion bypasses batch logic."""
+    return []
 
 
 def handle_step_functions_task(event: Dict[str, Any], context: Any) -> Dict[str, Any]:

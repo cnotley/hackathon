@@ -57,8 +57,6 @@ FIELD_MAPPINGS = {
     'quantity': ['quantity', 'qty', 'amount', 'count', 'units', 'uom', 'hours', 'days'],
     'hours': ['hours', 'hrs', 'time', 'duration', 'daily_hours', 'total_hours'],
     
-    # Material/Item variations
-    'materials': ['materials', 'consumables', 'supplies', 'items', 'parts', 'components'],
     'description': ['description', 'item', 'service', 'work_description', 'task'],
     
     # Worker/Personnel variations
@@ -744,18 +742,15 @@ class BedrockProcessor:
         try:
             logger.info("Starting Bedrock normalization process")
             
-            # Process tables for labor data extraction
+            # Process tables for labor data extraction only
             normalized_labor = []
-            normalized_materials = []
             
             if 'tables' in extracted_data:
                 for table in extracted_data['tables']:
                     table_analysis = self._analyze_table_with_bedrock(table, file_metadata)
-                    
-                    if table_analysis.get('type') == 'labor':
-                        normalized_labor.extend(table_analysis.get('data', []))
-                    elif table_analysis.get('type') == 'materials':
-                        normalized_materials.extend(table_analysis.get('data', []))
+                    if table_analysis.get('type') != 'labor':
+                        continue
+                    normalized_labor.extend(table_analysis.get('data', []))
             
             # Process forms for additional metadata
             form_data = self._extract_form_metadata(extracted_data.get('forms', []))
@@ -763,7 +758,6 @@ class BedrockProcessor:
             # Create normalized output structure
             normalized_result = {
                 'labor': normalized_labor,
-                'materials': normalized_materials,
                 'metadata': form_data,
                 'processing_info': {
                     'normalization_method': 'bedrock',
@@ -771,7 +765,8 @@ class BedrockProcessor:
                     'timestamp': datetime.utcnow().isoformat()
                 }
             }
-            
+
+            assert 'materials' not in normalized_result, "Materials handling removed"
             return normalized_result
             
         except Exception as e:
@@ -803,39 +798,30 @@ class BedrockProcessor:
     def _create_table_analysis_prompt(self, table_text: str, file_metadata: Dict[str, Any]) -> str:
         """Create prompt for Bedrock table analysis."""
         return f"""
-Analyze the following table from an invoice/contract document and extract structured labor or materials data.
+Analyze the following table from an invoice/contract document and extract structured LABOR data only.
 
 Document: {file_metadata.get('file_name', 'Unknown')}
 Table Content:
 {table_text}
 
 Instructions:
-1. Identify if this is a LABOR table or MATERIALS table
-2. Extract and normalize the data with these standard fields:
-
-For LABOR tables:
+1. Determine whether the table represents labor information. If it does not, respond with an empty labor dataset.
+2. When labor data is present, normalize the fields to the following structure:
 - name: Worker/employee name
 - type: Labor classification (RS=Regular Skilled, US=Unskilled, SS=Semi-Skilled, SU=Supervisor, EN=Engineer)
 - rate: Hourly/daily rate (normalize to decimal)
 - hours: Total hours worked
 - total: Total amount (rate × hours)
 
-For MATERIALS tables:
-- description: Item/material description
-- quantity: Amount/count
-- unit_price: Price per unit
-- total: Total cost
-
 Field Mapping Rules:
-- "Rate" → "rate" or "unit_price"
-- "Consumables" → "Materials"
-- "UOM" → "quantity"
+- "Rate" → "rate"
+- "UOM" or "Qty" → "hours" when referring to time
 - "Daily Hours" → "hours"
 - Various worker types → standardized codes (RS, US, SS, SU, EN)
 
 Return JSON format:
 {{
-  "type": "labor" or "materials",
+  "type": "labor",
   "confidence": 0.0-1.0,
   "data": [
     {{
@@ -848,7 +834,7 @@ Return JSON format:
   ]
 }}
 
-Focus on accuracy and handle variations in terminology.
+Focus exclusively on labor-related content and ignore materials, consumables, or equipment lists.
 """
     
     def _call_bedrock(self, prompt: str) -> str:
@@ -1001,20 +987,15 @@ Focus on accuracy and handle variations in terminology.
         logger.info("Using fallback rule-based normalization")
         
         normalized_labor = []
-        normalized_materials = []
         
         # Simple rule-based table processing
-        for table in extracted_data.get('tables', []):
-            if self._is_labor_table(table):
-                labor_data = self._extract_labor_data_rules(table)
-                normalized_labor.extend(labor_data)
-            elif self._is_materials_table(table):
-                materials_data = self._extract_materials_data_rules(table)
-                normalized_materials.extend(materials_data)
+        filtered_tables = _filter_to_labor_only({'tables': extracted_data.get('tables', [])}).get('tables', [])
+        for table in filtered_tables:
+            labor_data = self._extract_labor_data_rules(table)
+            normalized_labor.extend(labor_data)
         
         return {
             'labor': normalized_labor,
-            'materials': normalized_materials,
             'metadata': {},
             'processing_info': {
                 'normalization_method': 'fallback_rules',
@@ -1025,15 +1006,11 @@ Focus on accuracy and handle variations in terminology.
     def _is_labor_table(self, table: Dict[str, Any]) -> bool:
         """Determine if table contains labor data using rules."""
         table_text = self._table_to_text(table).lower()
+        materials_keywords = ['material', 'consumable', 'supply', 'equipment', 'component', 'item']
+        assert not any(keyword in table_text for keyword in materials_keywords), "Materials handling removed"
         labor_keywords = ['name', 'worker', 'employee', 'rate', 'hours', 'labor', 'personnel']
         return any(keyword in table_text for keyword in labor_keywords)
-    
-    def _is_materials_table(self, table: Dict[str, Any]) -> bool:
-        """Determine if table contains materials data using rules."""
-        table_text = self._table_to_text(table).lower()
-        materials_keywords = ['material', 'consumable', 'supply', 'item', 'part', 'component', 'quantity']
-        return any(keyword in table_text for keyword in materials_keywords)
-    
+
     def _extract_labor_data_rules(self, table: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Extract labor data using rule-based approach."""
         labor_data = []
@@ -1075,31 +1052,6 @@ Focus on accuracy and handle variations in terminology.
                     labor_data.append(labor_entry)
         
         return labor_data
-    
-    def _extract_materials_data_rules(self, table: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Extract materials data using rule-based approach."""
-        materials: List[Dict[str, Any]] = []
-        rows = table.get('rows', [])
-        if not rows:
-            return materials
-        headers = [c.get('text','').lower() for c in rows[0]]
-        idx = {i:h for i,h in enumerate(headers)}
-        for row in rows[1:]:
-            item: Dict[str, Any] = {}
-            for i, cell in enumerate(row):
-                h = idx.get(i,'')
-                t = cell.get('text','').strip()
-                if 'desc' in h or 'item' in h or 'material' in h:
-                    item['description'] = t
-                elif 'qty' in h or 'quantity' in h:
-                    item['quantity'] = self._extract_numeric_value(t)
-                elif 'unit' in h and ('price' in h or 'rate' in h or 'cost' in h):
-                    item['unit_price'] = self._extract_currency_value(t)
-                elif 'total' in h or 'amount' in h:
-                    item['total'] = self._extract_currency_value(t)
-            if item:
-                materials.append(item)
-        return materials
     
     def _extract_numeric_value(self, text: str) -> Optional[float]:
         """Extract numeric value from text."""
@@ -1184,12 +1136,12 @@ class IntelligentExtractor:
             logger.info(f"Starting intelligent extraction for {key}")
             
             # Step 1: Basic extraction
-            if file_extension in ['.pdf', '.png', '.jpg', '.jpeg']:
-                raw_data = self.textract_processor.process_document(bucket, key, file_size)
-            elif file_extension in ['.xlsx', '.xls']:
-                raw_data = self.excel_processor.process_excel_file(bucket, key)
-            else:
+            if file_extension != '.pdf':
                 raise ValueError(f"Unsupported file type: {file_extension}")
+            raw_data = self.textract_processor.process_document(bucket, key, file_size)
+
+            # Filter out materials before further processing
+            raw_data = _filter_to_labor_only(raw_data)
             
             # Step 2: Entity recognition on text content
             all_text = self._extract_all_text(raw_data)
@@ -1300,7 +1252,8 @@ class SemanticChunker:
             
             # Chunk tables separately
             if 'tables' in extracted_data:
-                table_chunks = self._chunk_tables(extracted_data['tables'], file_metadata)
+                labor_only_tables = _filter_to_labor_only({'tables': extracted_data['tables']}).get('tables', [])
+                table_chunks = self._chunk_tables(labor_only_tables, file_metadata)
                 chunks.extend(table_chunks)
             
             # Chunk forms
@@ -1310,7 +1263,8 @@ class SemanticChunker:
             
             # Chunk Excel sheets
             if 'sheets' in extracted_data:
-                excel_chunks = self._chunk_excel_sheets(extracted_data['sheets'], file_metadata)
+                labor_only_sheets = _filter_to_labor_only({'sheets': extracted_data['sheets'], 'summary': extracted_data.get('summary', {})})
+                excel_chunks = self._chunk_excel_sheets(labor_only_sheets.get('sheets', []), file_metadata)
                 chunks.extend(excel_chunks)
             
             # Add chunk metadata
@@ -1510,6 +1464,45 @@ class SemanticChunker:
         return len(text) // 4
 
 
+def _filter_to_labor_only(extracted_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove materials-related structures from extracted data."""
+    if not extracted_data:
+        return extracted_data
+
+    def _contains_material_terms(text: str) -> bool:
+        lowered = text.lower()
+        return any(keyword in lowered for keyword in ['material', 'consumable', 'supply', 'equipment', 'component', 'item'])
+
+    tables = extracted_data.get('tables') or []
+    if tables:
+        labor_tables: List[Dict[str, Any]] = []
+        for table in tables:
+            table_text_parts: List[str] = []
+            for row in table.get('rows', []) or []:
+                for cell in row:
+                    table_text_parts.append(cell.get('text', ''))
+            table_text = ' '.join(table_text_parts)
+            if _contains_material_terms(table_text) or _contains_material_terms(table.get('table_id', '')):
+                continue
+            labor_tables.append(table)
+        extracted_data['tables'] = labor_tables
+
+    sheets = extracted_data.get('sheets') or []
+    if sheets:
+        labor_sheets = [sheet for sheet in sheets if not _contains_material_terms(sheet.get('sheet_name', ''))]
+        extracted_data['sheets'] = labor_sheets
+        if extracted_data.get('summary') and isinstance(extracted_data['summary'], dict):
+            extracted_data['summary']['sheet_names'] = [sheet.get('sheet_name') for sheet in labor_sheets]
+            extracted_data['summary']['total_sheets'] = len(labor_sheets)
+
+    for key in ['materials', 'material_data', 'consumables']:
+        if key in extracted_data:
+            extracted_data.pop(key, None)
+
+    assert 'materials' not in extracted_data, "Materials handling removed"
+    return extracted_data
+
+
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Main Lambda handler for data extraction.
@@ -1571,7 +1564,6 @@ def handle_extraction_task(input_data: Dict[str, Any]) -> Dict[str, Any]:
                 'processing_summary': result['processing_summary'],
                 'normalized_data_preview': {
                     'labor_count': len(result.get('normalized_data', {}).get('labor', [])),
-                    'materials_count': len(result.get('normalized_data', {}).get('materials', [])),
                     'total_labor_amount': sum([
                         item.get('total', 0) or 0 
                         for item in result.get('normalized_data', {}).get('labor', [])
@@ -1603,16 +1595,15 @@ def handle_basic_extraction_fallback(input_data: Dict[str, Any]) -> Dict[str, An
     
     logger.info(f"Basic extraction fallback for {key}")
     
-    # Process based on file type
-    if file_extension in ['.pdf', '.png', '.jpg', '.jpeg']:
-        processor = TextractProcessor()
-        extracted_data = processor.process_document(bucket, key, file_size)
-    elif file_extension in ['.xlsx', '.xls']:
-        processor = ExcelProcessor()
-        extracted_data = processor.process_excel_file(bucket, key)
-    else:
+    # Process based on file type (PDF-only)
+    if file_extension != '.pdf':
         raise ValueError(f"Unsupported file type for extraction: {file_extension}")
+    processor = TextractProcessor()
+    extracted_data = processor.process_document(bucket, key, file_size)
     
+    # Filter out materials before further processing
+    extracted_data = _filter_to_labor_only(extracted_data)
+
     # Create semantic chunks
     chunker = SemanticChunker()
     file_metadata = {

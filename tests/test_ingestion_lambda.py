@@ -380,37 +380,19 @@ class TestFileProcessor:
         assert metadata['processing_priority'] == 'high'
         assert metadata['custom'] == 'value'
     
-    def test_extract_metadata_excel(self):
-        """Test metadata extraction for Excel file."""
-        file_info = {
-            'key': 'spreadsheets/data.xlsx',
-            'size': 2048,
-            'extension': '.xlsx',
-            'content_type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'etag': 'test-etag',
-            'metadata': {}
-        }
-        
-        metadata = self.processor.extract_metadata(file_info)
-        
-        assert metadata['document_type'] == 'spreadsheet'
-        assert metadata['processing_priority'] == 'medium'
-    
-    def test_extract_metadata_image(self):
-        """Test metadata extraction for image file."""
-        file_info = {
-            'key': 'images/receipt.png',
-            'size': 512,
-            'extension': '.png',
-            'content_type': 'image/png',
-            'etag': 'test-etag',
-            'metadata': {}
-        }
-        
-        metadata = self.processor.extract_metadata(file_info)
-        
-        assert metadata['document_type'] == 'image'
-        assert metadata['processing_priority'] == 'low'
+    def test_extract_metadata_raises_for_non_pdf(self):
+        """Non-PDF metadata extraction should be rejected."""
+        for extension, key in [('.xlsx', 'spreadsheets/data.xlsx'), ('.png', 'images/receipt.png')]:
+            file_info = {
+                'key': key,
+                'size': 1024,
+                'extension': extension,
+                'content_type': 'application/octet-stream',
+                'etag': 'test-etag',
+                'metadata': {}
+            }
+            with pytest.raises(ValueError):
+                self.processor.extract_metadata(file_info)
 
 
 class TestWorkflowOrchestrator:
