@@ -40,7 +40,7 @@ comprehend_client = boto3.client('comprehend')
 # Configuration
 BUCKET_NAME = os.environ.get('BUCKET_NAME')
 STATE_MACHINE_ARN = os.environ.get('STATE_MACHINE_ARN')
-BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'anthropic.claude-3-haiku-20240307-v1:0')
+BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'anthropic.claude-3-5-sonnet-20241022-v2:0')
 ASYNC_THRESHOLD_BYTES = 500 * 1024  # 500KB threshold for async processing
 MAX_CHUNK_SIZE = 4000  # Maximum tokens per chunk for Bedrock
 CONFIDENCE_THRESHOLD = 0.8  # Minimum confidence for OCR results (80%)
@@ -1078,8 +1078,28 @@ Focus on accuracy and handle variations in terminology.
     
     def _extract_materials_data_rules(self, table: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Extract materials data using rule-based approach."""
-        # Similar to labor extraction but for materials
-        return []  # Simplified for now
+        materials: List[Dict[str, Any]] = []
+        rows = table.get('rows', [])
+        if not rows:
+            return materials
+        headers = [c.get('text','').lower() for c in rows[0]]
+        idx = {i:h for i,h in enumerate(headers)}
+        for row in rows[1:]:
+            item: Dict[str, Any] = {}
+            for i, cell in enumerate(row):
+                h = idx.get(i,'')
+                t = cell.get('text','').strip()
+                if 'desc' in h or 'item' in h or 'material' in h:
+                    item['description'] = t
+                elif 'qty' in h or 'quantity' in h:
+                    item['quantity'] = self._extract_numeric_value(t)
+                elif 'unit' in h and ('price' in h or 'rate' in h or 'cost' in h):
+                    item['unit_price'] = self._extract_currency_value(t)
+                elif 'total' in h or 'amount' in h:
+                    item['total'] = self._extract_currency_value(t)
+            if item:
+                materials.append(item)
+        return materials
     
     def _extract_numeric_value(self, text: str) -> Optional[float]:
         """Extract numeric value from text."""
@@ -1318,7 +1338,8 @@ class SemanticChunker:
             'metadata': {
                 'source_file': file_metadata.get('file_name', ''),
                 'pages': [],
-                'confidence_scores': []
+                'confidence_scores': [],
+                'overlap_ratio': 0.2
             }
         }
         
@@ -1342,7 +1363,8 @@ class SemanticChunker:
                     'metadata': {
                         'source_file': file_metadata.get('file_name', ''),
                         'pages': [],
-                        'confidence_scores': []
+                        'confidence_scores': [],
+                        'overlap_ratio': 0.2
                     }
                 }
             
@@ -1355,6 +1377,22 @@ class SemanticChunker:
         # Add final chunk
         if current_chunk['content'].strip():
             chunks.append(current_chunk)
+
+        # Apply explicit 20% overlap by duplicating tail/head portions between adjacent chunks
+        overlapped_chunks = []
+        for i, ch in enumerate(chunks):
+            if i == 0:
+                overlapped_chunks.append(ch)
+                continue
+            prev = overlapped_chunks[-1]
+            # compute overlap window in characters
+            overlap_len = int(len(prev['content']) * 0.2)
+            if overlap_len > 0:
+                prefix = prev['content'][-overlap_len:]
+                ch['content'] = prefix + ch['content']
+                ch['metadata']['overlap_from_previous'] = overlap_len
+            overlapped_chunks.append(ch)
+        return overlapped_chunks
         
         return chunks
     

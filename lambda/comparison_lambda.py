@@ -9,6 +9,7 @@ It flags discrepancies, calculates savings, and provides detailed audit reports.
 import json
 import logging
 import os
+import uuid
 import boto3
 import pandas as pd
 import numpy as np
@@ -27,6 +28,7 @@ logger.setLevel(os.getenv('LOG_LEVEL', 'INFO'))
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb')
 bedrock_client = boto3.client('bedrock-runtime')
+s3_client = boto3.client('s3')
 sagemaker_client = boto3.client('sagemaker-runtime')
 s3_client = boto3.client('s3')
 
@@ -51,6 +53,7 @@ OVERTIME_THRESHOLD = 40.0  # Standard overtime threshold
 ANOMALY_THRESHOLD = 2.0    # Anomaly detection threshold (standard deviations)
 SAGEMAKER_MAX_RETRIES = 3
 SAGEMAKER_RETRY_DELAY = 2  # seconds
+ANOMALY_THRESHOLD = float(os.getenv('ANOMALY_THRESHOLD', '2.0'))
 
 
 class DataValidator:
@@ -348,6 +351,16 @@ class AnomalyDetector:
                     anomalies = self._process_anomaly_results(result, extracted_data)
                     
                     logger.info(f"SageMaker anomaly detection completed successfully: {len(anomalies)} anomalies found")
+                    # S3 inference logging (anonymized)
+                    try:
+                        s3_client.put_object(
+                            Bucket=BUCKET_NAME,
+                            Key=f"anomalies/{uuid.uuid4()}.json",
+                            Body=json.dumps({'features': features, 'predictions': result}, default=str),
+                            ContentType='application/json'
+                        )
+                    except Exception as log_e:
+                        logger.warning(f"Failed to log anomaly inference: {log_e}")
                     return anomalies
                     
                 except ClientError as e:
@@ -571,3 +584,186 @@ class AnomalyDetector:
             
         except Exception as e:
             logger.error(f"Error in statistical anomaly detection: {str(e)}")
+
+
+def _calculate_rate_variances(extracted: Dict[str, Any], rates: MSARatesComparator) -> Tuple[List[Dict[str, Any]], float]:
+    """Compute rate variances and total potential savings from normalized labor data."""
+    variances: List[Dict[str, Any]] = []
+    total_savings: float = 0.0
+
+    labor_entries = extracted.get('normalized_data', {}).get('labor', [])
+    for entry in labor_entries:
+        try:
+            labor_type = str(entry.get('type', 'RS'))
+            location = str(entry.get('location', 'default'))
+            billed_rate = float(entry.get('unit_price', 0) or 0)
+            hours = float(entry.get('total_hours', 0) or 0)
+            expected_rate = rates.get_msa_rate(labor_type, location)
+            if expected_rate is None or expected_rate <= 0:
+                continue
+
+            variance_pct = ((billed_rate - expected_rate) / expected_rate) * 100.0
+            if variance_pct > VARIANCE_THRESHOLD * 100.0:
+                variance_amount = (billed_rate - expected_rate) * hours
+                total_savings += max(0.0, variance_amount)
+                variances.append({
+                    'worker': entry.get('name', 'Unknown'),
+                    'labor_type': labor_type,
+                    'location': location,
+                    'billed_rate': round(billed_rate, 2),
+                    'msa_rate': round(expected_rate, 2),
+                    'variance_percentage': round(variance_pct, 2),
+                    'variance_amount': round(variance_amount, 2),
+                    'hours': hours
+                })
+        except Exception as e:
+            logger.warning(f"Rate variance calc error: {e}")
+            continue
+
+    return variances, round(total_savings, 2)
+
+
+def _detect_overtime_violations(extracted: Dict[str, Any], rates: MSARatesComparator) -> List[Dict[str, Any]]:
+    """Detect overtime violations based on thresholds per labor type."""
+    violations: List[Dict[str, Any]] = []
+    for entry in extracted.get('normalized_data', {}).get('labor', []):
+        try:
+            labor_type = str(entry.get('type', 'RS'))
+            hours = float(entry.get('total_hours', 0) or 0)
+            threshold = rates.get_overtime_threshold(labor_type)
+            if hours > threshold:
+                violations.append({
+                    'worker': entry.get('name', 'Unknown'),
+                    'labor_type': labor_type,
+                    'total_hours': hours,
+                    'overtime_hours': round(hours - threshold, 2),
+                    'threshold': threshold
+                })
+        except Exception as e:
+            logger.warning(f"Overtime detection error: {e}")
+            continue
+    return violations
+
+
+def _detect_duplicates(extracted: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Detect duplicate labor entries by key fields (worker, type, hours, rate, week)."""
+    seen = {}
+    duplicates: List[Dict[str, Any]] = []
+    for entry in extracted.get('normalized_data', {}).get('labor', []):
+        key = (
+            entry.get('name', '').strip().lower(),
+            str(entry.get('type', 'RS')).upper(),
+            float(entry.get('total_hours', 0) or 0),
+            float(entry.get('unit_price', 0) or 0),
+            entry.get('week', 'unknown')
+        )
+        if key in seen:
+            duplicates.append({
+                'worker': entry.get('name', 'Unknown'),
+                'labor_type': entry.get('type', 'RS'),
+                'hours': entry.get('total_hours', 0),
+                'rate': entry.get('unit_price', 0),
+                'week': entry.get('week', 'unknown'),
+                'duplicate_of_index': seen[key]
+            })
+        else:
+            seen[key] = len(seen)
+    return duplicates
+
+
+def _validate_classifications(extracted: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Simple classification validation placeholder (rule-based)."""
+    issues: List[Dict[str, Any]] = []
+    for entry in extracted.get('normalized_data', {}).get('labor', []):
+        t = str(entry.get('type','')).upper()
+        if t not in {'RS','US','SS','SU','EN'}:
+            issues.append({'type':'classification_error','worker':entry.get('name','Unknown'),'value':t})
+    return issues
+
+
+def _check_scope_with_kb(description: str) -> Dict[str, Any]:
+    """Stub for KB scope check; returns in_scope False if description empty."""
+    if not description:
+        return {'in_scope': False, 'score': 0.0, 'evidence': []}
+    # In real impl, call bedrock retrieve here
+    return {'in_scope': True, 'score': 0.75, 'evidence': []}
+
+
+def _normalize_input(event: Dict[str, Any]) -> Dict[str, Any]:
+    """Accept either full extraction payload or 'extraction_data' subfield."""
+    if 'extraction_data' in event and isinstance(event['extraction_data'], dict):
+        return {'normalized_data': event['extraction_data'].get('normalized_data', {}), **event['extraction_data']}
+    # Full extraction lambda output case
+    if 'normalized_data' in event:
+        return event
+    # Step Functions style: $.extraction.Payload
+    if 'extraction' in event and isinstance(event['extraction'], dict):
+        payload = event['extraction'].get('Payload', {})
+        if isinstance(payload, dict):
+            return payload
+    return {}
+
+
+def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    """Main handler: validate data, compute discrepancies, and return analysis JSON."""
+    logger.info(f"Received comparison event: {json.dumps(event, default=str)[:1000]}")
+    try:
+        extracted = _normalize_input(event)
+        if not extracted:
+            raise ValidationError("Missing or invalid extraction data")
+
+        # Validate numerical integrity and sanitize negatives
+        validation = DataValidator.validate_extracted_data(extracted)
+        corrected = validation.get('corrected_data', extracted)
+
+        # Compute discrepancies
+        rates = MSARatesComparator()
+        rate_variances, total_savings = _calculate_rate_variances(corrected, rates)
+        overtime_violations = _detect_overtime_violations(corrected, rates)
+
+        # Anomaly detection (SageMaker with fallback)
+        anomalies = AnomalyDetector().detect_anomalies(corrected)
+
+        # Duplicate detection
+        duplicates = _detect_duplicates(corrected)
+
+        # Classification validation and simple scope checks
+        classification_issues = _validate_classifications(corrected)
+        for item in corrected.get('normalized_data', {}).get('materials', []):
+            scope = _check_scope_with_kb(item.get('description',''))
+            if not scope.get('in_scope', True):
+                rate_variances.append({'type':'scope_flag','item':item.get('description',''), 'score': scope.get('score',0.0)})
+
+        analysis = {
+            'rate_variances': rate_variances,
+            'overtime_violations': overtime_violations,
+            'anomalies': anomalies,
+            'duplicates': duplicates,
+            'total_savings': total_savings,
+            'summary': {
+                'total_discrepancies': len(rate_variances) + len(overtime_violations) + len(anomalies) + len(duplicates),
+                'rate_variances': len(rate_variances),
+                'overtime_violations': len(overtime_violations),
+                'anomalies': len(anomalies),
+                'duplicates': len(duplicates),
+                'classification_issues': len(classification_issues)
+            }
+        }
+
+        return {
+            'statusCode': 200,
+            'discrepancy_analysis': analysis
+        }
+
+    except ValidationError as e:
+        logger.warning(f"Validation error: {e}")
+        return {
+            'statusCode': 400,
+            'error': str(e)
+        }
+    except Exception as e:
+        logger.error(f"Comparison handler error: {e}")
+        return {
+            'statusCode': 500,
+            'error': str(e)
+        }

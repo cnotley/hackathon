@@ -35,6 +35,9 @@ class InvoiceIngestionStack(Stack):
         
         # Create Step Functions state machine
         self.state_machine = self._create_step_functions_workflow()
+
+        # Placeholder for wiring to full pipeline; can be set by parent stack via parameter/prop
+        self.full_pipeline_state_machine_arn = self.node.try_get_context("full_pipeline_state_machine_arn")
         
         # Configure S3 event notifications
         self._configure_s3_notifications()
@@ -349,6 +352,21 @@ class InvoiceIngestionStack(Stack):
             result_path="$.processing_result",
             retry_on_service_exceptions=True
         )
+
+        # Optionally kick off the full AI pipeline after processing
+        start_full_pipeline = None
+        if self.full_pipeline_state_machine_arn:
+            start_full_pipeline = sfn_tasks.StepFunctionsStartExecution(
+                self,
+                "StartFullAIPipeline",
+                state_machine=sfn.StateMachine.from_state_machine_arn(
+                    self, "ImportedFullPipelineSM", self.full_pipeline_state_machine_arn
+                ),
+                input=sfn.TaskInput.from_object({
+                    "bucket.$": "$.bucket",
+                    "key.$": "$.key"
+                })
+            )
         
         # Define success and failure states
         success_state = sfn.Succeed(
@@ -384,7 +402,7 @@ class InvoiceIngestionStack(Stack):
                         failure_state,
                         errors=["States.ALL"],
                         result_path="$.error"
-                    ).next(success_state)
+                    ).next(start_full_pipeline.next(success_state) if start_full_pipeline else success_state)
                 )
             )
         )

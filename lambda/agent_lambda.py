@@ -503,7 +503,7 @@ def handle_audit_request(event: Dict[str, Any]) -> Dict[str, Any]:
             'file_info': context['file_info'],
             'extraction_summary': {
                 'status': extracted_data.get('extraction_status'),
-                'page_count': extracted_data.get('extracted_data', {}).get('page_count', 0),
+                'page_count': extracted_data.get('raw_extracted_data', {}).get('page_count', 0) or extracted_data.get('extracted_data', {}).get('page_count', 0),
                 'processing_method': extracted_data.get('processing_summary', {}).get('processing_method')
             },
             'audit_results': audit_results,

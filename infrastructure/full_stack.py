@@ -135,11 +135,11 @@ class MSAInvoiceAuditFullStack(Stack):
             "MSARatesTable",
             table_name="msa-rates",
             partition_key=dynamodb.Attribute(
-                name="rate_id",
+                name="labor_type",
                 type=dynamodb.AttributeType.STRING
             ),
             sort_key=dynamodb.Attribute(
-                name="effective_date",
+                name="location",
                 type=dynamodb.AttributeType.STRING
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -458,11 +458,11 @@ class MSAInvoiceAuditFullStack(Stack):
                 )
             ),
             storage_configuration=bedrock.CfnKnowledgeBase.StorageConfigurationProperty(
-                type="OPENSEARCH_SERVERLESS",
-                opensearch_serverless_configuration=bedrock.CfnKnowledgeBase.OpenSearchServerlessConfigurationProperty(
-                    collection_arn=self.opensearch_domain.domain_arn,
-                    vector_index_name="msa-knowledge-index",
-                    field_mapping=bedrock.CfnKnowledgeBase.OpenSearchServerlessFieldMappingProperty(
+                type="OPENSEARCH_DOMAIN",
+                opensearch_configuration=bedrock.CfnKnowledgeBase.OpenSearchConfigurationProperty(
+                    domain_endpoint=self.opensearch_domain.domain_endpoint,
+                    index_name="msa-knowledge-index",
+                    field_mapping=bedrock.CfnKnowledgeBase.OpenSearchFieldMappingProperty(
                         vector_field="vector",
                         text_field="text",
                         metadata_field="metadata"
@@ -554,8 +554,15 @@ class MSAInvoiceAuditFullStack(Stack):
             "ExtractDataTask",
             lambda_function=self.extraction_lambda,
             payload=sfn.TaskInput.from_object({
-                "bucket.$": "$.bucket",
-                "key.$": "$.key"
+                "task": "extract",
+                "input": {
+                    "file_info": {
+                        "key.$": "$.key",
+                        "size": 0,
+                        "extension.$": "States.Format('.{}', States.ArrayGetItem(States.StringSplit($.key, '.'), -1))"
+                    },
+                    "bucket.$": "$.bucket"
+                }
             }),
             result_path="$.extraction"
         )

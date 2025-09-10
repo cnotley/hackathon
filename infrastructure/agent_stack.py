@@ -224,11 +224,11 @@ class InvoiceAuditAgentStack(Stack):
                 )
             ),
             storage_configuration=bedrock.CfnKnowledgeBase.StorageConfigurationProperty(
-                type="OPENSEARCH_SERVERLESS",
-                opensearch_serverless_configuration=bedrock.CfnKnowledgeBase.OpenSearchServerlessConfigurationProperty(
-                    collection_arn=self.opensearch_domain.domain_arn,
-                    vector_index_name="invoice-audit-index",
-                    field_mapping=bedrock.CfnKnowledgeBase.OpenSearchServerlessFieldMappingProperty(
+                type="OPENSEARCH_DOMAIN",
+                opensearch_configuration=bedrock.CfnKnowledgeBase.OpenSearchConfigurationProperty(
+                    domain_endpoint=self.opensearch_domain.domain_endpoint,
+                    index_name="invoice-audit-index",
+                    field_mapping=bedrock.CfnKnowledgeBase.OpenSearchFieldMappingProperty(
                         vector_field="vector",
                         text_field="text",
                         metadata_field="metadata"

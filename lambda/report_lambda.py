@@ -458,7 +458,13 @@ class ExcelReportGenerator:
                 variance_data = rate_variances.get(worker_name, {})
                 msa_rate = variance_data.get('msa_rate', rate)
                 variance_pct = variance_data.get('variance_percentage', 0)
-                savings = variance_data.get('savings', 0)
+                # compute per-line savings if missing
+                savings = variance_data.get('savings')
+                if savings is None:
+                    try:
+                        savings = max(0.0, (rate - msa_rate) * float(entry.get('total_hours', 0) or 0))
+                    except Exception:
+                        savings = 0.0
                 
                 # Add row data
                 row_data = [
@@ -598,6 +604,23 @@ class ReportManager:
             
             # Upload reports to S3
             report_urls = self._upload_reports(report_id, markdown_report, excel_report, pdf_report)
+
+            # CSV export of discrepancies (if present)
+            try:
+                rows = []
+                for key in ['rate_variances','overtime_violations','anomalies','duplicates']:
+                    for item in flags_data.get(key, []) or []:
+                        item_copy = dict(item)
+                        item_copy['type'] = key
+                        rows.append(item_copy)
+                if rows:
+                    df = pd.DataFrame(rows)
+                    csv_bytes = df.to_csv(index=False).encode()
+                    csv_key = f"reports/{report_id}/{report_id}.csv"
+                    s3_client.put_object(Bucket=self.reports_bucket, Key=csv_key, Body=csv_bytes, ContentType='text/csv')
+                    report_urls['csv'] = f"s3://{self.reports_bucket}/{csv_key}"
+            except Exception as e:
+                logger.warning(f"CSV export skipped due to error: {e}")
             
             # Prepare response
             result = {
@@ -674,48 +697,7 @@ class ReportManager:
         return report_urls
 
 
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-    """
-    Main Lambda handler for report generation.
-    
-    Expected event structure:
-    {
-        "task": "generate_report",
-        "flags_data": {...},
-        "metadata": {...},
-        "extracted_data": {...}
-    }
-    """
-    try:
-        logger.info(f"Processing report generation request: {json.dumps(event, default=str)}")
-        
-        # Validate input
-        if event.get('task') != 'generate_report':
-            raise ValueError(f"Unknown task: {event.get('task')}")
-        
-        flags_data = event.get('flags_data', {})
-        metadata = event.get('metadata', {})
-        extracted_data = event.get('extracted_data', {})
-        
-        if not flags_data:
-            raise ValueError("Missing flags_data in event")
-        
-        # Generate comprehensive report
-        report_manager = ReportManager()
-        result = report_manager.generate_comprehensive_report(flags_data, metadata, extracted_data)
-        
-        logger.info(f"Report generation completed: {result['generation_status']}")
-        return result
-        
-    except Exception as e:
-        logger.error(f"Error in report Lambda handler: {str(e)}")
-        return {
-            'statusCode': 500,
-            'body': json.dumps({
-                'error': str(e),
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            })
-        }
+## NOTE: Using enhanced handler below; legacy handler removed to avoid duplication
 
 
 def handle_report_generation(flags_data: Dict[str, Any], metadata: Dict[str, Any], 

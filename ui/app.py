@@ -293,6 +293,7 @@ class MSAInvoiceAuditor:
             # Configuration from environment or Streamlit secrets
             self.ingestion_bucket = st.secrets.get("INGESTION_BUCKET", "msa-invoice-ingestion-bucket")
             self.reports_bucket = st.secrets.get("REPORTS_BUCKET", "msa-invoice-reports-bucket")
+            # Ensure this ARN points to the full AI pipeline, not just ingestion
             self.step_function_arn = st.secrets.get("STEP_FUNCTION_ARN", "")
             self.bedrock_agent_id = st.secrets.get("BEDROCK_AGENT_ID", "")
             self.bedrock_agent_alias_id = st.secrets.get("BEDROCK_AGENT_ALIAS_ID", "TSTALIASID")
