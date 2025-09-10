@@ -784,6 +784,35 @@ class InvoiceAuditAgentStack(Stack):
             result_path="$.comparison_result"
         )
         
+        # Define HITL Choice state for approval workflow
+        hitl_choice = sfn.Choice(
+            self,
+            "HITLApprovalChoice",
+            comment="Check if human approval is required based on discrepancy threshold"
+        )
+        
+        # Define Wait state for human approval
+        hitl_wait = sfn.Wait(
+            self,
+            "WaitForHumanApproval",
+            comment="Waiting for human approval of high-value discrepancies",
+            time=sfn.WaitTime.duration(Duration.hours(24))  # 24 hour timeout
+        )
+        
+        # Define Task state for human approval
+        hitl_approval_task = sfn_tasks.LambdaInvoke(
+            self,
+            "HumanApprovalTask",
+            lambda_function=self.agent_lambda,
+            payload=sfn.TaskInput.from_object({
+                "action": "hitl_approval",
+                "comparison_result.$": "$.comparison_result.Payload",
+                "bucket.$": "$.bucket",
+                "key.$": "$.key"
+            }),
+            result_path="$.hitl_result"
+        )
+        
         # Define agent analysis task
         agent_task = sfn_tasks.LambdaInvoke(
             self,
@@ -861,11 +890,21 @@ class InvoiceAuditAgentStack(Stack):
             result_path="$.error"
         )
         
+        # Add HITL choice logic
+        hitl_choice.when(
+            sfn.Condition.number_greater_than(
+                "$.comparison_result.Payload.discrepancy_analysis.summary.total_potential_savings", 1000
+            ),
+            hitl_wait.next(hitl_approval_task).next(agent_task)
+        ).otherwise(agent_task)
+        
         # Chain the tasks
         definition = extraction_task.next(
             comparison_task.next(
-                agent_task.next(
-                    report_task.next(success_state)
+                hitl_choice.next(
+                    agent_task.next(
+                        report_task.next(success_state)
+                    )
                 )
             )
         )

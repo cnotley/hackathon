@@ -586,6 +586,64 @@ def handle_async_agent_query(event: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 
+def handle_hitl_approval(event: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle human-in-the-loop approval workflow."""
+    try:
+        comparison_result = event.get('comparison_result', {})
+        bucket = event.get('bucket')
+        key = event.get('key')
+        
+        logger.info(f"Processing HITL approval for {bucket}/{key}")
+        
+        # Extract discrepancy analysis
+        discrepancy_analysis = comparison_result.get('discrepancy_analysis', {})
+        total_savings = discrepancy_analysis.get('summary', {}).get('total_potential_savings', 0)
+        
+        # Create approval summary
+        approval_summary = {
+            'approval_id': str(uuid.uuid4()),
+            'timestamp': datetime.utcnow().isoformat(),
+            'file_info': {
+                'bucket': bucket,
+                'key': key
+            },
+            'discrepancy_summary': {
+                'total_savings': total_savings,
+                'total_discrepancies': discrepancy_analysis.get('summary', {}).get('total_discrepancies', 0),
+                'rate_variances': discrepancy_analysis.get('summary', {}).get('rate_variances', 0),
+                'overtime_violations': discrepancy_analysis.get('summary', {}).get('overtime_violations', 0),
+                'anomalies': discrepancy_analysis.get('summary', {}).get('anomalies', 0)
+            },
+            'approval_required': total_savings > 1000,
+            'status': 'pending_approval'
+        }
+        
+        # Store approval request in S3 for UI access
+        if BUCKET_NAME:
+            approval_key = f"approvals/{approval_summary['approval_id']}.json"
+            s3_client.put_object(
+                Bucket=BUCKET_NAME,
+                Key=approval_key,
+                Body=json.dumps(approval_summary, default=str),
+                ContentType='application/json'
+            )
+            logger.info(f"Approval request stored: s3://{BUCKET_NAME}/{approval_key}")
+        
+        return {
+            'status': 'hitl_approval_required',
+            'approval_summary': approval_summary,
+            'message': f'Human approval required for high-value discrepancies (${total_savings:,.2f} potential savings)'
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in HITL approval: {str(e)}")
+        return {
+            'status': 'hitl_error',
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
+        }
+
+
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """Main Lambda handler for agent requests with enhanced error handling."""
     try:
@@ -624,6 +682,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         elif action == 'async_agent_query':
             # Internal action for async processing
             return handle_async_agent_query(event)
+        elif action == 'hitl_approval':
+            # Human-in-the-loop approval handling
+            return handle_hitl_approval(event)
         elif action == 'health_check':
             # Health check endpoint
             config_validation = InputValidator.validate_agent_configuration()

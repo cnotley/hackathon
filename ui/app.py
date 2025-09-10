@@ -474,6 +474,34 @@ class MSAInvoiceAuditor:
         except ClientError as e:
             st.error(f"Error downloading report: {str(e)}")
             return None
+    
+    def list_pending_approvals(self) -> List[Dict[str, Any]]:
+        """List pending HITL approvals from S3."""
+        try:
+            response = self.s3_client.list_objects_v2(
+                Bucket=self.ingestion_bucket,
+                Prefix="approvals/"
+            )
+            
+            approvals = []
+            if 'Contents' in response:
+                for obj in response['Contents']:
+                    try:
+                        approval_obj = self.s3_client.get_object(
+                            Bucket=self.ingestion_bucket,
+                            Key=obj['Key']
+                        )
+                        approval_data = json.loads(approval_obj['Body'].read())
+                        if approval_data.get('status') == 'pending_approval':
+                            approvals.append(approval_data)
+                    except Exception as e:
+                        logger.warning(f"Failed to load approval {obj['Key']}: {e}")
+                        continue
+            
+            return sorted(approvals, key=lambda x: x.get('timestamp', ''), reverse=True)
+        except ClientError as e:
+            st.error(f"Error listing pending approvals: {str(e)}")
+            return []
 
 def main():
     """Enhanced main Streamlit application with authentication and validation."""
@@ -655,6 +683,15 @@ def main():
                 # HITL: Approve/Resume with Task Token (if available)
                 st.subheader("🧑‍⚖️ Human-in-the-Loop (HITL)")
                 st.caption("If the workflow paused for approval, paste the task token below to approve and resume.")
+                
+                # Check for pending approvals
+                pending_approvals = auditor.list_pending_approvals()
+                if pending_approvals:
+                    st.warning(f"⚠️ {len(pending_approvals)} approval(s) pending")
+                    for approval in pending_approvals:
+                        with st.expander(f"Approval Required: {approval['approval_id'][:8]}..."):
+                            st.json(approval['discrepancy_summary'])
+                
                 with st.form("hitl_approval_form"):
                     task_token = st.text_input("Step Functions Task Token", placeholder="Paste task token from approval task")
                     approve = st.form_submit_button("✅ Approve and Resume")
@@ -665,6 +702,7 @@ def main():
                                 output=json.dumps({"approved": True})
                             )
                             st.success("Approval sent. Workflow will resume.")
+                            st.rerun()
                         except ClientError as e:
                             st.error(f"Failed to send approval: {e}")
         
