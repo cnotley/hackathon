@@ -22,8 +22,7 @@ from aws_cdk import (
     aws_logs as logs,
     CfnOutput,
     Duration,
-    RemovalPolicy,
-    Size
+    RemovalPolicy
 )
 from constructs import Construct
 import json

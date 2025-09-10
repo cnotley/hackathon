@@ -747,3 +747,10 @@ class TestErrorHandling:
         
         # Should not raise exception
         result = generator._generate_fallback_excel(
+            minimal_flags,
+            minimal_metadata,
+            minimal_extracted
+        )
+        assert result is not None
+        workbook = openpyxl.load_workbook(BytesIO(result))
+        assert 'Project Summary' in workbook.sheetnames

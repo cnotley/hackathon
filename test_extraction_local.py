@@ -17,8 +17,8 @@ from pathlib import Path
 import pytest
 import pandas as pd
 import openpyxl
-from lambda.comparison_lambda import _calculate_rate_variances, MSARatesComparator, _detect_overtime_violations
-from lambda.report_lambda import ExcelReportGenerator
+from comparison_lambda import _calculate_rate_variances, MSARatesComparator, _detect_overtime_violations
+from report_lambda import ExcelReportGenerator
 
 # Add lambda directory to Python path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'lambda'))
@@ -315,8 +315,10 @@ class MockBedrockProcessor:
         
         normalized_result = {
             'labor': normalized_labor,
+            'materials': [],
             'summary': {
                 'total_labor_cost': total_labor_cost,
+                'total_material_cost': 0.0,
                 'total_hours': total_hours,
                 'worker_count': len(normalized_labor)
             },
@@ -334,7 +336,7 @@ class MockBedrockProcessor:
             }
         }
         
-        assert 'materials' not in normalized_result, "Materials handling removed"
+        assert 'materials' in normalized_result and not normalized_result['materials'], "Materials handling removed"
         assert normalized_result['summary']['total_labor_cost'] == pytest.approx(77000.0, rel=0.01)
         assert normalized_result['summary']['total_hours'] == pytest.approx(1119.75, rel=0.01)
         return normalized_result
@@ -343,7 +345,38 @@ class MockBedrockProcessor:
         """Process labor table rows into normalized format."""
         if 'labor' not in table.get('table_id', '').lower():
             return []
-
+        normalized_rows: List[Dict[str, Any]] = []
+        rows = table.get('rows', [])
+        if not rows:
+            return normalized_rows
+        header = rows[0]
+        data_rows = rows[1:]
+        for row in data_rows:
+            if len(row) < 5:
+                continue
+            worker_name = row[0].get('text', '').strip()
+            if not worker_name:
+                continue
+            labor_type = row[1].get('text', '').strip()
+            hours_text = row[2].get('text', '')
+            rate_text = row[3].get('text', '')
+            total_text = row[4].get('text', '')
+            total_hours = self._extract_numeric(hours_text)
+            unit_price = self._extract_currency(rate_text)
+            total_cost = self._extract_currency(total_text)
+            msa_rate = self.msa_rates.get(labor_type, unit_price)
+            normalized_rows.append({
+                'name': worker_name,
+                'type': labor_type,
+                'total_hours': total_hours,
+                'unit_price': unit_price,
+                'total_cost': total_cost if total_cost else total_hours * unit_price,
+                'msa_rate': msa_rate,
+                'variance_percentage': ((unit_price - msa_rate) / msa_rate * 100) if msa_rate else 0.0,
+                'variance_amount': (unit_price - msa_rate) * total_hours if msa_rate else 0.0
+            })
+        return normalized_rows
+    
     def _detect_table_type(self, table: Dict[str, Any]) -> str:
         """Detect table type based on keywords."""
         table_text = ' '.join(cell.get('text', '') for row in table.get('rows', []) for cell in row).lower()

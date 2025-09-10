@@ -19,9 +19,7 @@ from aws_cdk import (
     aws_logs as logs,
     aws_sagemaker as sagemaker,
     aws_stepfunctions as sfn,
-    aws_stepfunctions_tasks as sfn_tasks,
-    CustomResource,
-    custom_resources as cr,
+    aws_stepfunctions_tasks as sfn_tasks
 )
 from constructs import Construct
 import json
@@ -1012,14 +1010,14 @@ def handler(event, context):
         self.msa_rates_table.grant_write_data(populate_function)
         
         # Create custom resource
-        CustomResource(
-            self,
-            "PopulateMSARates",
-            service_token=populate_function.function_arn,
-            properties={
-                "TableName": self.msa_rates_table.table_name
-            }
-        )
+        # CustomResource(
+        #     self,
+        #     "PopulateMSARates",
+        #     service_token=populate_function.function_arn,
+        #     properties={
+        #         "TableName": self.msa_rates_table.table_name
+        #     }
+        # )
 
     def _create_outputs(self) -> None:
         """Create CloudFormation outputs for important resources."""

@@ -12,10 +12,32 @@ import boto3
 from moto import mock_dynamodb, mock_s3
 import pandas as pd
 import numpy as np
+import os
+import importlib
+from typing import Dict, Any
+
+os.environ.setdefault('AWS_DEFAULT_REGION', 'us-east-1')
+comparison_module = importlib.import_module('lambda.comparison_lambda')
+MSARatesComparator = comparison_module.MSARatesComparator
+BedrockAnalyzer = comparison_module.BedrockAnalyzer
+AnomalyDetector = comparison_module.AnomalyDetector
+DiscrepancyFlaggingEngine = comparison_module.DiscrepancyFlaggingEngine
+lambda_handler = comparison_module.lambda_handler
 
 
 class TestComparisonLambda:
     """Test cases for comparison Lambda function."""
+
+    def setup_method(self):
+        self.lambda_module = importlib.import_module("comparison_lambda")
+        self.lambda_handler = self.lambda_module.lambda_handler
+        self.comparator_class = self.lambda_module.MSARatesComparator
+        self.calculate_variances = self.lambda_module._calculate_rate_variances
+
+    def _build_event(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "body": json.dumps(body)
+        }
 
     @pytest.fixture
     def sample_extraction_data(self):
@@ -76,75 +98,6 @@ class TestComparisonLambda:
             {"labor_type": "default", "location": "overtime_rules", "weekly_threshold": 40.0}
         ]
 
-    @pytest.fixture
-    def expected_discrepancies(self):
-        """Expected discrepancy flags for sample data."""
-        return {
-            "rate_variances": [
-                {
-                    "worker": "John Smith",
-                    "labor_type": "RS",
-                    "charged_rate": 73.50,
-                    "standard_rate": 70.00,
-                    "variance_percent": 5.0,
-                    "discrepancy": "RS rate overcharge $157.50",
-                    "savings": 157.50,
-                    "flag": "Rate variance exceeds 5% threshold"
-                },
-                {
-                    "worker": "Jane Doe",
-                    "labor_type": "SS", 
-                    "charged_rate": 99.75,
-                    "standard_rate": 95.00,
-                    "variance_percent": 5.0,
-                    "discrepancy": "SS rate overcharge $190.00",
-                    "savings": 190.00,
-                    "flag": "Rate variance exceeds 5% threshold"
-                },
-                {
-                    "worker": "Bob Wilson",
-                    "labor_type": "EN",
-                    "charged_rate": 131.25,
-                    "standard_rate": 125.00,
-                    "variance_percent": 5.0,
-                    "discrepancy": "EN rate overcharge $312.50",
-                    "savings": 312.50,
-                    "flag": "Rate variance exceeds 5% threshold"
-                }
-            ],
-            "overtime_violations": [
-                {
-                    "worker": "John Smith",
-                    "hours": 45.0,
-                    "threshold": 40.0,
-                    "excess_hours": 5.0,
-                    "flag": "Overtime: support with time sheets"
-                },
-                {
-                    "worker": "Bob Wilson", 
-                    "hours": 50.0,
-                    "threshold": 40.0,
-                    "excess_hours": 10.0,
-                    "flag": "Overtime: support with time sheets"
-                }
-            ],
-            "anomalies": [
-                {
-                    "item": "Safety respirators",
-                    "amount": 6313.00,
-                    "z_score": 2.5,
-                    "flag": "Statistical anomaly detected",
-                    "description": "Unusually high cost item"
-                }
-            ],
-            "total_savings": 660.00,
-            "summary": {
-                "total_discrepancies": 6,
-                "high_priority_flags": 3,
-                "potential_savings": 660.00
-            }
-        }
-
     @mock_dynamodb
     @mock_s3
     def test_msa_rates_comparator(self, sample_msa_rates):
@@ -170,7 +123,6 @@ class TestComparisonLambda:
 
         # Import and test MSARatesComparator
         with patch.dict('os.environ', {'MSA_RATES_TABLE': 'msa-rates'}):
-            from lambda.comparison_lambda import MSARatesComparator
             
             comparator = MSARatesComparator()
             
@@ -186,7 +138,7 @@ class TestComparisonLambda:
             variance = comparator.calculate_rate_variance(73.50, 70.00)
             assert variance == 5.0
 
-    @patch('boto3.client')
+    @patch('lambda.comparison_lambda.boto3.client')
     def test_bedrock_analyzer(self, mock_boto_client):
         """Test Bedrock analysis functionality."""
         # Mock Bedrock client
@@ -200,8 +152,6 @@ class TestComparisonLambda:
                 }]
             }).encode())
         }
-        
-        from lambda.comparison_lambda import BedrockAnalyzer
         
         analyzer = BedrockAnalyzer()
         
@@ -218,7 +168,7 @@ class TestComparisonLambda:
         assert "5.0%" in analysis
         mock_bedrock.invoke_model.assert_called_once()
 
-    @patch('boto3.client')
+    @patch('lambda.comparison_lambda.boto3.client')
     def test_sagemaker_anomaly_detection(self, mock_boto_client):
         """Test SageMaker anomaly detection."""
         # Mock SageMaker client
@@ -229,8 +179,6 @@ class TestComparisonLambda:
         mock_sagemaker.invoke_endpoint.return_value = {
             'Body': Mock(read=lambda: json.dumps([0.1, 0.8, 0.2]).encode())
         }
-        
-        from lambda.comparison_lambda import AnomalyDetector
         
         detector = AnomalyDetector()
         
@@ -250,7 +198,6 @@ class TestComparisonLambda:
 
     def test_statistical_anomaly_fallback(self):
         """Test statistical anomaly detection fallback."""
-        from lambda.comparison_lambda import AnomalyDetector
         
         detector = AnomalyDetector()
         
@@ -267,7 +214,7 @@ class TestComparisonLambda:
     @patch('lambda.comparison_lambda.BedrockAnalyzer')
     @patch('lambda.comparison_lambda.AnomalyDetector')
     def test_discrepancy_flagging_engine(self, mock_anomaly, mock_bedrock, mock_comparator, 
-                                       sample_extraction_data, expected_discrepancies):
+                                       sample_extraction_data):
         """Test complete discrepancy flagging engine."""
         # Setup mocks
         mock_comp_instance = Mock()
@@ -299,7 +246,6 @@ class TestComparisonLambda:
             }
         ]
         
-        from lambda.comparison_lambda import DiscrepancyFlaggingEngine
         
         engine = DiscrepancyFlaggingEngine()
         result = engine.analyze_invoice(sample_extraction_data)
@@ -340,7 +286,6 @@ class TestComparisonLambda:
             "summary": {"total_discrepancies": 0}
         }
         
-        from lambda.comparison_lambda import lambda_handler
         
         # Test event
         event = {
@@ -370,7 +315,6 @@ class TestComparisonLambda:
             "week": "2024-W01"
         })
         
-        from lambda.comparison_lambda import DiscrepancyFlaggingEngine
         
         engine = DiscrepancyFlaggingEngine()
         duplicates = engine._detect_duplicates(duplicate_data)
@@ -380,7 +324,6 @@ class TestComparisonLambda:
 
     def test_checklist_flag_generation(self):
         """Test checklist flag generation."""
-        from lambda.comparison_lambda import DiscrepancyFlaggingEngine
         
         engine = DiscrepancyFlaggingEngine()
         
@@ -398,7 +341,6 @@ class TestComparisonLambda:
 
     def test_savings_calculation(self, sample_extraction_data):
         """Test potential savings calculation."""
-        from lambda.comparison_lambda import DiscrepancyFlaggingEngine
         
         engine = DiscrepancyFlaggingEngine()
         
@@ -418,7 +360,6 @@ class TestComparisonLambda:
         # Mock client that raises exception
         mock_boto_client.side_effect = Exception("AWS service error")
         
-        from lambda.comparison_lambda import lambda_handler
         
         event = {
             "extraction_data": {"invalid": "data"},
@@ -435,7 +376,6 @@ class TestComparisonLambda:
 
     def test_chunked_context_handling(self):
         """Test handling of chunked context from Bedrock KB."""
-        from lambda.comparison_lambda import BedrockAnalyzer
         
         analyzer = BedrockAnalyzer()
         
