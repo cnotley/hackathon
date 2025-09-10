@@ -25,6 +25,28 @@ def test_batch_mixed_sizes():
     assert "error" in res["batch"][1]
 
 
+def test_head_object_failure(monkeypatch):
+    class FakeS3Client:
+        def __init__(self):
+            self.tagged = None
+        def head_object(self, Bucket, Key):
+            raise Exception("boom")
+        def put_object_tagging(self, Bucket, Key, Tagging):
+            self.tagged = Tagging
+
+    fake_s3 = FakeS3Client()
+
+    def fake_client(service):
+        assert service == "s3"
+        return fake_s3
+
+    monkeypatch.setattr("lambda.ingestion_lambda.client", fake_client)
+
+    evt = {"Records": [{"s3": {"bucket": {"name": "invoices"}, "object": {"key": "missing.pdf"}}}]}
+    res = handle_event(evt, None)
+    assert res["batch"][0]["error"] == "unknown_size"
+    assert fake_s3.tagged == {"TagSet": [{"Key": "status", "Value": "unknown_size"}]}
+
 def test_validate_file_size():
     validate_file_size(1024)  # under limit
     import pytest

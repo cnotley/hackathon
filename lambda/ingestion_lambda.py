@@ -67,7 +67,7 @@ def handle_event(event, context):
     for rec in event.get("Records", []):
         b = rec["s3"]["bucket"]["name"]
         k = rec["s3"]["object"]["key"]
-        size = rec["s3"]["object"].get("size") or rec["s3"]["object"].get("sequencer") or 0
+        size = rec["s3"]["object"].get("size") or 0
         if not size:
             s3 = client("s3")
             try:
@@ -76,6 +76,19 @@ def handle_event(event, context):
             except Exception as e:
                 logger.warning("HEAD failed for s3://%s/%s: %s", b, k, e)
                 size = 0
+        if not size:
+            msg = "unknown_size"
+            logger.error("Missing or zero size for s3://%s/%s", b, k)
+            results.append({"bucket": b, "key": k, "error": msg})
+            try:
+                client("s3").put_object_tagging(
+                    Bucket=b,
+                    Key=k,
+                    Tagging={"TagSet": [{"Key": "status", "Value": msg}]},
+                )
+            except Exception as tag_err:  # pragma: no cover - best effort
+                logger.warning("tagging failed for %s/%s: %s", b, k, tag_err)
+            continue
         try:
             validate_file_size(int(size))
         except ValueError as e:
