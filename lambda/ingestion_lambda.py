@@ -1,4 +1,4 @@
-import os, json, logging
+import os, json, logging, time
 from layers.common.python.common import client
 
 logger = logging.getLogger(__name__)
@@ -8,6 +8,7 @@ if not logger.handlers:
 MAX_MB = int(os.environ.get("MAX_UPLOAD_MB", "5"))
 
 def _start_workflow(bucket, key):
+    """Attempt to start the Step Functions workflow with retries."""
     sfn = client("stepfunctions")
     input_payload = {"bucket": bucket, "key": key}
     arn = os.environ.get("STATE_MACHINE_ARN")
@@ -19,9 +20,18 @@ def _start_workflow(bucket, key):
         except Exception as e:
             logger.warning("Could not list state machines: %s", e)
     if not arn:
-        return {"status":"no_state_machine","input":input_payload}
-    sfn.start_execution(stateMachineArn=arn, input=json.dumps(input_payload))
-    return {"status":"started","stateMachineArn": arn}
+        return {"status": "no_state_machine", "input": input_payload}
+
+    delay = 1.0
+    for attempt in range(3):
+        try:
+            sfn.start_execution(stateMachineArn=arn, input=json.dumps(input_payload))
+            return {"status": "started", "stateMachineArn": arn, "attempt": attempt + 1}
+        except Exception as e:
+            logger.warning("start_execution failed (attempt %s): %s", attempt + 1, e)
+            time.sleep(delay)
+            delay *= 1.5
+    return {"status": "error", "error": "start_failed", "input": input_payload}
 
 def handle_event(event, context):
     """S3 ObjectCreated event -> validate size & start Step Functions.

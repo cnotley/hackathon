@@ -1,22 +1,34 @@
 import os, logging, json, statistics
 from layers.common.python.common import client, resource
+from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 if not logger.handlers:
     logging.basicConfig(level=logging.INFO)
 
-TABLE = os.environ.get("MWO_TABLE_NAME","mwo-rates")
+TABLE = os.environ.get("MWO_TABLE_NAME", "mwo-rates")
 VARIANCE_THRESH = 0.05
 
+try:
+    from forex_python.converter import CurrencyRates
+except Exception:  # pragma: no cover - library optional during tests
+    CurrencyRates = None
+
+try:
+    from statsmodels.stats.diagnostic import kstest_normal
+except Exception:  # pragma: no cover
+    kstest_normal = None
+
+@lru_cache(maxsize=128)
 def _load_rates():
     try:
         ddb = resource("dynamodb"); table = ddb.Table(TABLE)
         resp = table.scan(); items = resp.get("Items", [])
         rates = {i["code"]: float(i["rate"]) for i in items if "code" in i and "rate" in i}
-        return rates or {"RS":70.0, "GL":40.0}
+        return rates or {"RS":70.0, "GL":43.0, "PM":115.0, "SRPM":135.0, "PCA":57.0}
     except Exception as e:
         logger.warning("Rate table scan failed: %s", e)
-        return {"RS":70.0, "GL":40.0}
+        return {"RS":70.0, "GL":43.0, "PM":115.0, "SRPM":135.0, "PCA":57.0}
 
 def _local_anomaly_scores(values):
     try:
@@ -46,9 +58,20 @@ def _sagemaker_scores(values):
 
 def compare_data(extracted):
     rates = _load_rates()
-    flags = []; savings = 0.0
+    flags = []
+    savings = 0.0
+
+    currency = extracted.get("currency", "USD")
+    rate_conv = 1.0
+    if currency and currency.upper() != "USD" and CurrencyRates:
+        try:
+            rate_conv = CurrencyRates().get_rate(currency, "USD")
+        except Exception as e:
+            logger.warning("currency conversion failed: %s", e)
+            flags.append({"type": "currency_conversion_failed", "currency": currency})
+
     labor = extracted.get("labor", [])
-    amounts = [float(i.get("total", 0)) for i in labor if i.get("total") is not None]
+    amounts = [float(i.get("total", 0)) * rate_conv for i in labor if i.get("total") is not None]
     sm_scores = _sagemaker_scores(amounts) or _local_anomaly_scores(amounts)
 
     seen = set()
@@ -57,7 +80,7 @@ def compare_data(extracted):
         code = (item.get("code") or "")[:2].upper()
         rate = float(item.get("rate") or 0)
         hours = float(item.get("total_hours") or 0)
-        total = float(item.get("total") or 0)
+        total = float(item.get("total") or 0) * rate_conv
 
         key = (name.lower(), code, rate, hours, total)
         if key in seen:
@@ -83,8 +106,19 @@ def compare_data(extracted):
         if score > 0.6:
             flags.append({"type":"anomaly","score": score, "item": item})
 
-    if extracted.get("total") is not None and sum(amounts) > extracted["total"] * 1.5:
-        flags.append({"type":"distribution_mismatch","sum_labor": sum(amounts), "reported_total": extracted["total"]})
+    reported_total = extracted.get("total")
+    if reported_total is not None:
+        reported_total = float(reported_total) * rate_conv
+        if sum(amounts) > reported_total * 1.5:
+            flags.append({"type": "distribution_mismatch", "sum_labor": sum(amounts), "reported_total": reported_total})
+
+    if kstest_normal and amounts:
+        try:
+            stat, p = kstest_normal(amounts)
+            if p < 0.05:
+                flags.append({"type": "distribution_non_normal", "pvalue": p})
+        except Exception as e:
+            logger.warning("normality test failed: %s", e)
 
     if savings == 0 and flags:
         savings = sum(amounts) * 0.10

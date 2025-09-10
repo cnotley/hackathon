@@ -1,4 +1,5 @@
-from lambda.ingestion_lambda import handle_event
+import importlib
+handle_event = importlib.import_module("lambda.ingestion_lambda").handle_event
 
 def test_small_file_ok():
     evt = {"Records":[{"s3":{"bucket":{"name":"invoices"},"object":{"key":"test_invoice.pdf","size":1024}}}]}

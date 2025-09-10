@@ -96,8 +96,9 @@ def generate_report(extracted, comparison, out_bucket=None, out_key_prefix="repo
         s3.put_object(Bucket=out_bucket, Key=base + ".xlsx", Body=outputs["report.xlsx"])
         if "report.pdf" in outputs:
             s3.put_object(Bucket=out_bucket, Key=base + ".pdf", Body=outputs["report.pdf"])
-        return {"s3":{"bucket": out_bucket, "prefix": base}, "generated": list(outputs.keys())}
-    return {"generated": list(outputs.keys())}
+        return {"s3": {"bucket": out_bucket, "prefix": base}, "generated": list(outputs.keys())}
+
+    return {"generated": list(outputs.keys()), "files": outputs}
 
 def generate_handler(event, context):
     extracted = event.get("extracted") or event
