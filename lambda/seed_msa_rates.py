@@ -169,6 +169,20 @@ def seed_msa_rates() -> Dict[str, Any]:
                 'created_by': 'seeding_script',
                 'created_at': datetime.utcnow().isoformat()
             }
+            ,
+            # Management-to-labor ratio heuristic (SU:RS <= 1:6)
+            {
+                'rate_id': 'ratio_rules_su_rs',
+                'effective_date': effective_date,
+                'labor_type': 'SU',
+                'location': 'ratio_rules',
+                'max_ratio': Decimal('6.0'),
+                'description': 'Maximum supervisor-to-RS ratio (1:6)',
+                'category': 'policy',
+                'subcategory': 'ratio',
+                'created_by': 'seeding_script',
+                'created_at': datetime.utcnow().isoformat()
+            }
         ]
         
         # Insert rates into DynamoDB

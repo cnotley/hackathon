@@ -258,6 +258,17 @@ def handle_s3_event(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Initialize file processor
             file_processor = FileProcessor(bucket)
             
+            # Route MSA documents to kb-msas/ prefix for Knowledge Base ingestion
+            if 'msa' in key.lower() and not key.lower().startswith('kb-msas/'):
+                new_key = f"kb-msas/{os.path.basename(key)}"
+                try:
+                    s3_client.copy_object(Bucket=bucket, CopySource={'Bucket': bucket, 'Key': key}, Key=new_key)
+                    s3_client.delete_object(Bucket=bucket, Key=key)
+                    key = new_key
+                    logger.info(f"Routed MSA document to {key}")
+                except ClientError as e:
+                    logger.warning(f"Failed routing MSA document, proceeding with original key: {e}")
+
             # Get file information
             file_info = file_processor.get_file_info(key)
             logger.info(f"File info: {file_info}")

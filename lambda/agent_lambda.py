@@ -262,6 +262,19 @@ class BedrockAgentManager:
                             'status': 'validation_error'
                         }
             
+            # Opportunistic KB retrieve to enrich responses on MSA scope/rates
+            kb_citations = []
+            try:
+                if KNOWLEDGE_BASE_ID and any(word in query.lower() for word in ['msa','scope','exception','rate','labor']):
+                    kb_resp = bedrock_agent_client.retrieve(
+                        knowledgeBaseId=KNOWLEDGE_BASE_ID,
+                        retrievalQuery={'text': query[:2000]},
+                        retrievalConfiguration={'vectorSearchConfiguration': {'numberOfResults': 3}}
+                    )
+                    kb_citations = kb_resp.get('retrievalResults', [])
+            except Exception as e:
+                logger.warning(f"KB retrieve failed: {e}")
+
             # Try Bedrock agent invocation
             if self.agent_id:
                 response = bedrock_agent_client.invoke_agent(
@@ -281,11 +294,13 @@ class BedrockAgentManager:
                     'timestamp': datetime.utcnow().isoformat()
                 }
                 
-                return {
+                result_payload = {
                     'session_id': session_id,
                     'response': result,
+                    'citations': kb_citations,
                     'status': 'success'
                 }
+                return result_payload
             else:
                 # Fallback to local cache if Bedrock unavailable
                 return self._fallback_response(query, session_id)

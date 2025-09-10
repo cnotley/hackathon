@@ -248,7 +248,7 @@ class InvoiceAuditAgentStack(Stack):
                 type="S3",
                 s3_configuration=bedrock.CfnDataSource.S3DataSourceConfigurationProperty(
                     bucket_arn=self.ingestion_bucket.bucket_arn,
-                    inclusion_prefixes=["extracted/", "processed/"]
+                    inclusion_prefixes=["extracted/", "processed/", "kb-msas/"]
                 )
             ),
             vector_ingestion_configuration=bedrock.CfnDataSource.VectorIngestionConfigurationProperty(

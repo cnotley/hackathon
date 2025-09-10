@@ -18,6 +18,7 @@ from datetime import datetime
 import uuid
 from decimal import Decimal
 import re
+import copy
 import time
 from botocore.exceptions import ClientError
 
@@ -31,6 +32,8 @@ bedrock_client = boto3.client('bedrock-runtime')
 s3_client = boto3.client('s3')
 sagemaker_client = boto3.client('sagemaker-runtime')
 s3_client = boto3.client('s3')
+bedrock_agent_runtime = boto3.client('bedrock-agent-runtime')
+comprehend_client = boto3.client('comprehend')
 
 # Custom exceptions
 class ValidationError(Exception):
@@ -46,6 +49,7 @@ MSA_RATES_TABLE = os.getenv('MSA_RATES_TABLE', 'msa-rates')
 BEDROCK_MODEL_ID = os.getenv('BEDROCK_MODEL_ID', 'anthropic.claude-3-5-sonnet-20241022-v2:0')
 SAGEMAKER_ENDPOINT = os.getenv('SAGEMAKER_ENDPOINT', 'invoice-anomaly-detection')
 BUCKET_NAME = os.getenv('BUCKET_NAME')
+KNOWLEDGE_BASE_ID = os.getenv('KNOWLEDGE_BASE_ID')
 
 # Configuration constants
 VARIANCE_THRESHOLD = 0.05  # 5% variance threshold
@@ -672,21 +676,82 @@ def _detect_duplicates(extracted: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def _validate_classifications(extracted: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Simple classification validation placeholder (rule-based)."""
+    """Validate labor classification using Comprehend entity hints (lightweight)."""
     issues: List[Dict[str, Any]] = []
     for entry in extracted.get('normalized_data', {}).get('labor', []):
-        t = str(entry.get('type','')).upper()
-        if t not in {'RS','US','SS','SU','EN'}:
-            issues.append({'type':'classification_error','worker':entry.get('name','Unknown'),'value':t})
+        try:
+            t = str(entry.get('type','')).upper()
+            desc = str(entry.get('name','')) + ' ' + str(entry.get('description',''))
+            if t not in {'RS','US','SS','SU','EN'}:
+                issues.append({'type':'classification_error','worker':entry.get('name','Unknown'),'value':t})
+                continue
+            if desc.strip():
+                resp = comprehend_client.detect_entities(Text=desc[:4000], LanguageCode='en')
+                entity_texts = {e.get('Text','').lower() for e in resp.get('Entities', [])}
+                mapping = {
+                    'EN': {'engineer','professional','pe'},
+                    'SU': {'supervisor','foreman','manager'},
+                    'SS': {'semi-skilled','semi skilled','technician','journeyman'},
+                    'RS': {'skilled','regular','craft'},
+                    'US': {'laborer','helper','unskilled'}
+                }
+                expected = mapping.get(t, set())
+                if expected and not (expected & entity_texts):
+                    issues.append({'type':'classification_mismatch','worker':entry.get('name','Unknown'),'labor_type':t,'entities':list(entity_texts)})
+        except Exception:
+            continue
     return issues
 
 
 def _check_scope_with_kb(description: str) -> Dict[str, Any]:
-    """Stub for KB scope check; returns in_scope False if description empty."""
+    """Use Bedrock Retrieve against KB to check scope-of-work relevance."""
     if not description:
         return {'in_scope': False, 'score': 0.0, 'evidence': []}
-    # In real impl, call bedrock retrieve here
-    return {'in_scope': True, 'score': 0.75, 'evidence': []}
+    try:
+        if not KNOWLEDGE_BASE_ID:
+            return {'in_scope': True, 'score': 0.5, 'evidence': []}
+        resp = bedrock_agent_runtime.retrieve(
+            knowledgeBaseId=KNOWLEDGE_BASE_ID,
+            retrievalQuery={'text': description[:2000]},
+            retrievalConfiguration={'vectorSearchConfiguration': {'numberOfResults': 3}}
+        )
+        citations = resp.get('retrievalResults', [])
+        top_score = max((c.get('score', 0.0) for c in citations), default=0.0)
+        return {'in_scope': top_score >= 0.5, 'score': float(top_score), 'evidence': citations}
+    except Exception as e:
+        logger.warning(f"KB retrieve failed: {e}")
+        return {'in_scope': True, 'score': 0.5, 'evidence': []}
+
+
+def _check_management_to_labor_ratio(extracted: Dict[str, Any], rates: MSARatesComparator) -> List[Dict[str, Any]]:
+    """Heuristic: SU:RS <= 1:6 unless overridden in DynamoDB (location 'ratio_rules')."""
+    issues: List[Dict[str, Any]] = []
+    try:
+        table = dynamodb.Table(MSA_RATES_TABLE)
+        default_ratio = 6.0
+        try:
+            rr = table.get_item(Key={'labor_type':'SU','location':'ratio_rules'}).get('Item')
+            if rr and 'max_ratio' in rr:
+                default_ratio = float(rr['max_ratio'])
+        except Exception:
+            pass
+        labor = extracted.get('normalized_data', {}).get('labor', [])
+        su_hours = sum(float(e.get('total_hours',0) or 0) for e in labor if str(e.get('type','')).upper()=='SU')
+        rs_hours = sum(float(e.get('total_hours',0) or 0) for e in labor if str(e.get('type','')).upper()=='RS')
+        if rs_hours > 0:
+            ratio = su_hours / rs_hours
+            if ratio > (1.0 / default_ratio):
+                issues.append({
+                    'type':'management_to_labor_ratio',
+                    'supervisor_hours': round(su_hours,2),
+                    'rs_hours': round(rs_hours,2),
+                    'observed_ratio': round(ratio,3),
+                    'policy_max_ratio': f"1:{int(default_ratio)}",
+                    'description': f"Supervisor hours exceed policy (SU:RS should be <= 1:{int(default_ratio)})"
+                })
+    except Exception as e:
+        logger.warning(f"Ratio heuristic failed: {e}")
+    return issues
 
 
 def _normalize_input(event: Dict[str, Any]) -> Dict[str, Any]:
@@ -727,21 +792,25 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Duplicate detection
         duplicates = _detect_duplicates(corrected)
 
-        # Classification validation and simple scope checks
+        # Classification validation and scope checks (labor-focused)
         classification_issues = _validate_classifications(corrected)
-        for item in corrected.get('normalized_data', {}).get('materials', []):
-            scope = _check_scope_with_kb(item.get('description',''))
+        for item in corrected.get('normalized_data', {}).get('labor', []):
+            scope = _check_scope_with_kb(item.get('description', item.get('name','')))
             if not scope.get('in_scope', True):
-                rate_variances.append({'type':'scope_flag','item':item.get('description',''), 'score': scope.get('score',0.0)})
+                rate_variances.append({'type':'scope_flag','item':item.get('name',''), 'score': scope.get('score',0.0)})
+
+        # Management-to-labor ratio heuristic
+        ratio_flags = _check_management_to_labor_ratio(corrected, rates)
 
         analysis = {
             'rate_variances': rate_variances,
             'overtime_violations': overtime_violations,
             'anomalies': anomalies,
             'duplicates': duplicates,
+            'ratio_flags': ratio_flags,
             'total_savings': total_savings,
             'summary': {
-                'total_discrepancies': len(rate_variances) + len(overtime_violations) + len(anomalies) + len(duplicates),
+                'total_discrepancies': len(rate_variances) + len(overtime_violations) + len(anomalies) + len(duplicates) + len(ratio_flags) + len(classification_issues),
                 'rate_variances': len(rate_variances),
                 'overtime_violations': len(overtime_violations),
                 'anomalies': len(anomalies),

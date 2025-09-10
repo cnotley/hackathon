@@ -651,6 +651,22 @@ def main():
                         
                         if execution_status == 'FAILED' and 'error' in status:
                             st.error(f"**Error:** {status['error']}")
+
+                # HITL: Approve/Resume with Task Token (if available)
+                st.subheader("🧑‍⚖️ Human-in-the-Loop (HITL)")
+                st.caption("If the workflow paused for approval, paste the task token below to approve and resume.")
+                with st.form("hitl_approval_form"):
+                    task_token = st.text_input("Step Functions Task Token", placeholder="Paste task token from approval task")
+                    approve = st.form_submit_button("✅ Approve and Resume")
+                    if approve and task_token:
+                        try:
+                            auditor.stepfunctions_client.send_task_success(
+                                taskToken=task_token,
+                                output=json.dumps({"approved": True})
+                            )
+                            st.success("Approval sent. Workflow will resume.")
+                        except ClientError as e:
+                            st.error(f"Failed to send approval: {e}")
         
         else:
             st.info("📋 Upload a file and start analysis to see execution progress here")
