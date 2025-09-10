@@ -38,6 +38,7 @@ bedrock_client = boto3.client('bedrock-runtime')
 
 # Environment variables
 BEDROCK_MODEL_ID = os.getenv('BEDROCK_MODEL_ID', 'anthropic.claude-3-5-sonnet-20241022-v2:0')
+GUARDRAIL_ID = os.getenv('GUARDRAIL_ID', 'default-guardrail')
 REPORTS_BUCKET = os.getenv('REPORTS_BUCKET', 'msa-audit-reports')
 TEMPLATE_BUCKET = os.getenv('TEMPLATE_BUCKET', 'msa-audit-templates')
 TEMPLATE_KEY = os.getenv('TEMPLATE_KEY', 'XXXI_Template.xlsx')
@@ -61,14 +62,19 @@ class BedrockReportGenerator:
                 modelId=self.model_id,
                 body=json.dumps({
                     "anthropic_version": "bedrock-2023-05-31",
-                    "max_tokens": 4000,
+                    "max_tokens": 2000,
                     "messages": [
                         {
                             "role": "user",
                             "content": prompt
                         }
                     ]
-                })
+                }),
+                guardrailConfig={
+                    'guardrailIdentifier': GUARDRAIL_ID,
+                    'guardrailVersion': '1',
+                    'trace': 'ENABLED'
+                }
             )
             
             # Parse the response

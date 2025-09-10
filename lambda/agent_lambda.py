@@ -35,6 +35,7 @@ KNOWLEDGE_BASE_ID = os.getenv('KNOWLEDGE_BASE_ID')
 MSA_RATES_TABLE = os.getenv('MSA_RATES_TABLE', 'msa-rates')
 EXTRACTION_LAMBDA_NAME = os.getenv('EXTRACTION_LAMBDA_NAME', 'extraction-lambda')
 BUCKET_NAME = os.getenv('BUCKET_NAME')
+GUARDRAIL_ID = os.getenv('GUARDRAIL_ID', 'default-guardrail')
 
 
 class InputValidator:
@@ -281,7 +282,12 @@ class BedrockAgentManager:
                     agentId=self.agent_id,
                     agentAliasId=self.agent_alias_id,
                     sessionId=session_id,
-                    inputText=query
+                    inputText=self._build_agent_prompt(query, history),
+                    guardrailConfig={
+                        'guardrailIdentifier': GUARDRAIL_ID,
+                        'guardrailVersion': '1',
+                        'trace': 'ENABLED'
+                    }
                 )
                 
                 # Process the response stream
@@ -725,7 +731,7 @@ if __name__ == '__main__':
         'action': 'audit',
         'bucket': 'test-bucket',
         'key': 'test-invoice.pdf',
-        'query': 'Audit this invoice against MSA standards and flag any discrepancies'
+        'query': 'Audit this invoice against MSA standards'
     }
     
     result = lambda_handler(test_event, None)

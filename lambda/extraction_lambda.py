@@ -41,6 +41,7 @@ comprehend_client = boto3.client('comprehend')
 BUCKET_NAME = os.environ.get('BUCKET_NAME')
 STATE_MACHINE_ARN = os.environ.get('STATE_MACHINE_ARN')
 BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'anthropic.claude-3-5-sonnet-20241022-v2:0')
+GUARDRAIL_ID = os.environ.get('GUARDRAIL_ID', 'default-guardrail')
 ASYNC_THRESHOLD_BYTES = 500 * 1024  # 500KB threshold for async processing
 MAX_CHUNK_SIZE = 4000  # Maximum tokens per chunk for Bedrock
 CONFIDENCE_THRESHOLD = float(os.environ.get('CONFIDENCE_THRESHOLD', '0.8'))  # Minimum confidence
@@ -865,7 +866,12 @@ Focus exclusively on labor-related content and ignore materials, consumables, or
                 
                 response = self.bedrock_client.invoke_model(
                     modelId=self.model_id,
-                    body=json.dumps(body)
+                    body=json.dumps(body),
+                    guardrailConfig={
+                        'guardrailIdentifier': GUARDRAIL_ID,
+                        'guardrailVersion': '1',
+                        'trace': 'ENABLED'
+                    }
                 )
                 
                 response_body = json.loads(response['body'].read())
@@ -1269,12 +1275,15 @@ class SemanticChunker:
             
             # Add chunk metadata
             for i, chunk in enumerate(chunks):
+                overlap_len = chunk.get('metadata', {}).get('overlap_from_previous', 0)
                 chunk['chunk_metadata'] = {
                     'chunk_id': f"{file_metadata.get('file_name', 'unknown')}_{i+1}",
                     'chunk_index': i + 1,
                     'total_chunks': len(chunks),
                     'estimated_tokens': self._estimate_tokens(chunk['content']),
-                    'created_at': datetime.utcnow().isoformat()
+                    'created_at': datetime.utcnow().isoformat(),
+                    'overlap_from_previous': overlap_len,
+                    'source': chunk.get('metadata', {}).get('source', 'labor_text')
                 }
             
             return chunks

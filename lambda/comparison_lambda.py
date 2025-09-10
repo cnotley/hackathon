@@ -47,6 +47,7 @@ class SageMakerError(Exception):
 # Environment variables
 MSA_RATES_TABLE = os.getenv('MSA_RATES_TABLE', 'msa-rates')
 BEDROCK_MODEL_ID = os.getenv('BEDROCK_MODEL_ID', 'anthropic.claude-3-5-sonnet-20241022-v2:0')
+GUARDRAIL_ID = os.getenv('GUARDRAIL_ID', 'default-guardrail')
 SAGEMAKER_ENDPOINT = os.getenv('SAGEMAKER_ENDPOINT', 'invoice-anomaly-detection')
 BUCKET_NAME = os.getenv('BUCKET_NAME')
 KNOWLEDGE_BASE_ID = os.getenv('KNOWLEDGE_BASE_ID')
@@ -238,7 +239,12 @@ class BedrockAnalyzer:
                             "content": prompt
                         }
                     ]
-                })
+                }),
+                guardrailConfig={
+                    'guardrailIdentifier': GUARDRAIL_ID,
+                    'guardrailVersion': '1',
+                    'trace': 'ENABLED'
+                }
             )
             
             # Parse response
@@ -267,7 +273,7 @@ class BedrockAnalyzer:
             raise ValidationError("Materials handling removed")
 
         prompt = f"""
-You are an expert invoice auditor analyzing discrepancies found in contractor invoices against MSA (Master Services Agreement) standards.
+You are an expert invoice auditor analyzing discrepancies found in contractor invoices against MSA (Master Services Agreement) standards. Only reference the provided JSON data; do not infer beyond what is supplied.
 
 EXTRACTED DATA SUMMARY:
 - Total Labor Entries: {len(extracted_data.get('normalized_data', {}).get('labor', []))}
