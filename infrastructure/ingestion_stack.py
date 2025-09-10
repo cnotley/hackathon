@@ -1,3 +1,4 @@
+import aws_cdk as cdk
 from aws_cdk import (
     Stack, Duration,
     aws_s3 as s3,
@@ -8,6 +9,8 @@ from aws_cdk import (
     aws_s3_notifications as s3n,
     aws_logs as logs,
     aws_iam as iam,
+    aws_ec2 as ec2,
+    aws_cloudwatch as cloudwatch,
 )
 from constructs import Construct
 
@@ -15,11 +18,21 @@ class AuditFullStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        invoices_bucket = s3.Bucket(self, "AuditFilesBucket",
-                                     bucket_name="audit-files-bucket",
-                                     versioned=True,
-                                     block_public_access=s3.BlockPublicAccess.BLOCK_ALL)
-        reports_bucket = s3.Bucket(self, "ReportsBucket", versioned=True, block_public_access=s3.BlockPublicAccess.BLOCK_ALL)
+        vpc = ec2.Vpc(self, "AuditVPC", max_azs=2)
+
+        invoices_bucket = s3.Bucket(
+            self,
+            "AuditFilesBucket",
+            bucket_name="audit-files-bucket",
+            versioned=True,
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+        )
+        reports_bucket = s3.Bucket(
+            self,
+            "ReportsBucket",
+            versioned=True,
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+        )
 
         table = dynamodb.Table(self, "MwoRates",
                                partition_key=dynamodb.Attribute(name="code", type=dynamodb.AttributeType.STRING),
@@ -48,6 +61,7 @@ class AuditFullStack(Stack):
             environment=env,
             layers=[common_layer],
             log_retention=logs.RetentionDays.ONE_WEEK,
+            vpc=vpc,
         )
 
         extraction_fn = _lambda.Function(
@@ -60,6 +74,7 @@ class AuditFullStack(Stack):
             environment=env,
             layers=[common_layer],
             log_retention=logs.RetentionDays.ONE_WEEK,
+            vpc=vpc,
         )
 
         agent_fn = _lambda.Function(
@@ -72,6 +87,7 @@ class AuditFullStack(Stack):
             environment=env,
             layers=[common_layer],
             log_retention=logs.RetentionDays.ONE_WEEK,
+            vpc=vpc,
         )
 
         comparison_fn = _lambda.Function(
@@ -84,6 +100,7 @@ class AuditFullStack(Stack):
             environment=env,
             layers=[common_layer],
             log_retention=logs.RetentionDays.ONE_WEEK,
+            vpc=vpc,
         )
 
         report_fn = _lambda.Function(
@@ -96,6 +113,27 @@ class AuditFullStack(Stack):
             environment=env,
             layers=[common_layer],
             log_retention=logs.RetentionDays.ONE_WEEK,
+            vpc=vpc,
+        )
+
+        # Seed DynamoDB rates on deploy
+        seed_fn = _lambda.Function(
+            self,
+            "SeedRatesFn",
+            code=_lambda.Code.from_asset("lambda"),
+            handler="seed_kb.handler",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            timeout=Duration.seconds(60),
+            environment={"MWO_TABLE_NAME": table.table_name},
+            layers=[common_layer],
+            vpc=vpc,
+        )
+        table.grant_read_write_data(seed_fn)
+        cdk.CustomResource(self, "SeedRates", service_token=seed_fn.function_arn)
+
+        # Provisioned concurrency for agent
+        agent_fn.current_version.add_alias(
+            "live", provisioned_concurrent_executions=1
         )
 
         # Step Functions: Extract -> Compare -> Report
@@ -135,3 +173,16 @@ class AuditFullStack(Stack):
         # Bedrock, Comprehend, Textract, StepFunctions wide-open for prototype
         for fn in [extraction_fn, agent_fn, comparison_fn, report_fn, ingestion_fn]:
             fn.add_to_role_policy(iam.PolicyStatement(actions=["textract:*","bedrock:*","comprehend:*","states:*","sagemaker:InvokeEndpoint"], resources=["*"]))
+
+        # CloudWatch alarm and dashboard
+        alarm = cloudwatch.Alarm(
+            self,
+            "IngestionErrorsAlarm",
+            metric=ingestion_fn.metric_errors(period=Duration.minutes(1)),
+            threshold=1,
+            evaluation_periods=1,
+        )
+        dashboard = cloudwatch.Dashboard(self, "AuditDashboard")
+        dashboard.add_widgets(
+            cloudwatch.GraphWidget(title="Ingestion Errors", left=[ingestion_fn.metric_errors()])
+        )
