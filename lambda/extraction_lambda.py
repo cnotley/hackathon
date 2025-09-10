@@ -43,8 +43,8 @@ STATE_MACHINE_ARN = os.environ.get('STATE_MACHINE_ARN')
 BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'anthropic.claude-3-5-sonnet-20241022-v2:0')
 ASYNC_THRESHOLD_BYTES = 500 * 1024  # 500KB threshold for async processing
 MAX_CHUNK_SIZE = 4000  # Maximum tokens per chunk for Bedrock
-CONFIDENCE_THRESHOLD = 0.8  # Minimum confidence for OCR results (80%)
-LOW_CONFIDENCE_THRESHOLD = 0.6  # Fallback threshold for Bedrock processing
+CONFIDENCE_THRESHOLD = float(os.environ.get('CONFIDENCE_THRESHOLD', '0.8'))  # Minimum confidence
+LOW_CONFIDENCE_THRESHOLD = float(os.environ.get('LOW_CONFIDENCE_THRESHOLD', '0.6'))  # Low conf
 MAX_MEMORY_SIZE = 512 * 1024 * 1024  # 512MB memory limit for text processing
 
 # Field mapping and normalization dictionaries
