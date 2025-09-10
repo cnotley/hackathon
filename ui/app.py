@@ -722,57 +722,25 @@ def main():
                 
                 # Enhanced analysis flags section
                 st.header("🚩 Analysis Flags")
-                
-                # Sample data with expected values from requirements
-                sample_flags = [
-                    {
-                        "Type": "Rate Overcharge", 
-                        "Description": "RS Labor rate exceeds MSA standard", 
-                        "Amount": "$375.00", 
-                        "Worker": "Smith, John",
-                        "Severity": "High"
-                    },
-                    {
-                        "Type": "Rate Overcharge", 
-                        "Description": "US Labor rate variance detected", 
-                        "Amount": "$200.00", 
-                        "Worker": "Johnson, Mike",
-                        "Severity": "Medium"  
-                    },
-                    {
-                        "Type": "Potential Savings", 
-                        "Description": "MSA compliance adjustment", 
-                        "Amount": "$16,000.00", 
-                        "Category": "Total Estimated",
-                        "Severity": "Info"
-                    }
-                ]
-                
-                # Color code by severity
-                def get_flag_color(severity):
-                    colors = {
-                        'High': '🔴',
-                        'Medium': '🟠', 
-                        'Low': '🟡',
-                        'Info': '🔵'
-                    }
-                    return colors.get(severity, '⚪')
-                
-                for flag in sample_flags:
-                    severity_icon = get_flag_color(flag.get('Severity', 'Info'))
-                    st.markdown(f"{severity_icon} **{flag['Type']}**: {flag['Description']} - **{flag['Amount']}**")
-                
-                # Enhanced summary metrics with expected values
-                col_metrics1, col_metrics2, col_metrics3 = st.columns(3)
-                
-                with col_metrics1:
-                    st.metric("💰 Total Overcharges", "$575.00", "↑ $375")
-                
-                with col_metrics2:
-                    st.metric("💵 Potential Savings", "$16,000", "↓ 10%")
-                
-                with col_metrics3:
-                    st.metric("📊 Compliance Score", "89%", "↑ 5%")
+                st.caption("View discrepancies by category. Filters apply to the CSV exported by the report Lambda.")
+                # Allow user to select a CSV from the reports list
+                csv_reports = [r for r in reports if str(r['key']).endswith('.csv')]
+                if csv_reports:
+                    csv_select = st.selectbox("Select CSV report", [r['key'] for r in csv_reports])
+                    if st.button("Load Discrepancies", type="secondary"):
+                        try:
+                            csv_obj = auditor.s3_client.get_object(Bucket=auditor.reports_bucket, Key=csv_select)
+                            df = pd.read_csv(csv_obj['Body'])
+                            cat = st.selectbox("Filter by type", options=["all","rate_variances","overtime_violations","anomalies","duplicates"], index=0)
+                            if cat != "all" and 'type' in df.columns:
+                                df_filtered = df[df['type'] == cat]
+                            else:
+                                df_filtered = df
+                            st.dataframe(df_filtered, use_container_width=True)
+                        except Exception as e:
+                            st.error(f"Failed to load CSV: {e}")
+                else:
+                    st.info("No CSV report found yet. Generate a report to view discrepancies.")
             
             else:
                 st.info("📋 No reports generated yet. Analysis may still be in progress.")

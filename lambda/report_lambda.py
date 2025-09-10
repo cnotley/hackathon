@@ -91,6 +91,21 @@ class BedrockReportGenerator:
         rate_variances = flags_data.get('rate_variances', [])
         overtime_violations = flags_data.get('overtime_violations', [])
         anomalies = flags_data.get('anomalies', [])
+        # Attempt to attach evidence like page numbers if present in flags_data
+        anomaly_evidence = {}
+        try:
+            for a in anomalies:
+                key = a.get('item') or a.get('worker')
+                if key and isinstance(a, dict):
+                    ev = {}
+                    if 'page' in a:
+                        ev['page'] = a.get('page')
+                    if 'evidence' in a:
+                        ev['evidence'] = a.get('evidence')
+                    if ev:
+                        anomaly_evidence[key] = ev
+        except Exception:
+            pass
         
         # Calculate totals
         as_presented = metadata.get('invoice_total', 0)
@@ -144,6 +159,17 @@ Generate a comprehensive MSA (Master Services Agreement) audit report in Markdow
   - Z-Score: {anomaly.get('z_score', 0):.2f}
   - Description: {anomaly.get('description', 'Statistical anomaly detected')}
 """
+            # Append evidence if available
+            try:
+                key = anomaly.get('item') or anomaly.get('worker')
+                if key and key in anomaly_evidence:
+                    ev = anomaly_evidence[key]
+                    if 'page' in ev:
+                        prompt += f"\n  - Evidence Page: {ev['page']}\n"
+                    if 'evidence' in ev:
+                        prompt += f"  - Evidence: {json.dumps(ev['evidence'])}\n"
+            except Exception:
+                pass
         
         prompt += """
 
