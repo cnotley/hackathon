@@ -15,7 +15,10 @@ class AuditFullStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        invoices_bucket = s3.Bucket(self, "InvoicesBucket", versioned=True, block_public_access=s3.BlockPublicAccess.BLOCK_ALL)
+        invoices_bucket = s3.Bucket(self, "AuditFilesBucket",
+                                     bucket_name="audit-files-bucket",
+                                     versioned=True,
+                                     block_public_access=s3.BlockPublicAccess.BLOCK_ALL)
         reports_bucket = s3.Bucket(self, "ReportsBucket", versioned=True, block_public_access=s3.BlockPublicAccess.BLOCK_ALL)
 
         table = dynamodb.Table(self, "MwoRates",
@@ -35,67 +38,90 @@ class AuditFullStack(Stack):
             "MAX_UPLOAD_MB": "5",
         }
 
-        ingestion_fn = _lambda.Function(self, "IngestionLambda",
+        ingestion_fn = _lambda.Function(
+            self, "IngestionLambda",
             code=_lambda.Code.from_asset("lambda"),
             handler="ingestion_lambda.handle_event",
             runtime=_lambda.Runtime.PYTHON_3_12,
-            timeout=Duration.seconds(30),
-            memory_size=256,
-            environment=env,
-            layers=[common_layer],
-            log_retention=logs.RetentionDays.ONE_WEEK,
-        )
-
-        extraction_fn = _lambda.Function(self, "ExtractionLambda",
-            code=_lambda.Code.from_asset("lambda"),
-            handler="extraction_lambda.extract_handler",
-            runtime=_lambda.Runtime.PYTHON_3_12,
-            timeout=Duration.seconds(900),
-            memory_size=2048,
-            environment=env,
-            layers=[common_layer],
-            log_retention=logs.RetentionDays.ONE_WEEK,
-        )
-
-        agent_fn = _lambda.Function(self, "AgentLambda",
-            code=_lambda.Code.from_asset("lambda"),
-            handler="agent_lambda.invoke_agent",
-            runtime=_lambda.Runtime.PYTHON_3_12,
-            timeout=Duration.seconds(120),
+            timeout=Duration.seconds(300),
             memory_size=512,
             environment=env,
             layers=[common_layer],
             log_retention=logs.RetentionDays.ONE_WEEK,
         )
 
-        comparison_fn = _lambda.Function(self, "ComparisonLambda",
+        extraction_fn = _lambda.Function(
+            self, "ExtractionLambda",
             code=_lambda.Code.from_asset("lambda"),
-            handler="comparison_lambda.compare_handler",
+            handler="extraction_lambda.extract_handler",
             runtime=_lambda.Runtime.PYTHON_3_12,
-            timeout=Duration.seconds(120),
-            memory_size=1024,
+            timeout=Duration.seconds(300),
+            memory_size=512,
             environment=env,
             layers=[common_layer],
             log_retention=logs.RetentionDays.ONE_WEEK,
         )
 
-        report_fn = _lambda.Function(self, "ReportLambda",
+        agent_fn = _lambda.Function(
+            self, "AgentLambda",
+            code=_lambda.Code.from_asset("lambda"),
+            handler="agent_lambda.invoke_agent",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            timeout=Duration.seconds(300),
+            memory_size=512,
+            environment=env,
+            layers=[common_layer],
+            log_retention=logs.RetentionDays.ONE_WEEK,
+        )
+
+        comparison_fn = _lambda.Function(
+            self, "ComparisonLambda",
+            code=_lambda.Code.from_asset("lambda"),
+            handler="comparison_lambda.compare_handler",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            timeout=Duration.seconds(300),
+            memory_size=512,
+            environment=env,
+            layers=[common_layer],
+            log_retention=logs.RetentionDays.ONE_WEEK,
+        )
+
+        report_fn = _lambda.Function(
+            self, "ReportLambda",
             code=_lambda.Code.from_asset("lambda"),
             handler="report_lambda.generate_handler",
             runtime=_lambda.Runtime.PYTHON_3_12,
-            timeout=Duration.seconds(120),
-            memory_size=1536,
+            timeout=Duration.seconds(300),
+            memory_size=512,
             environment=env,
             layers=[common_layer],
             log_retention=logs.RetentionDays.ONE_WEEK,
         )
 
         # Step Functions: Extract -> Compare -> Report
-        extract_task = tasks.LambdaInvoke(self, "Extract", lambda_function=extraction_fn, output_path="$.Payload")
-        compare_task = tasks.LambdaInvoke(self, "Compare", lambda_function=comparison_fn, output_path="$.Payload")
-        report_task = tasks.LambdaInvoke(self, "Report", lambda_function=report_fn, output_path="$.Payload")
-        definition = extract_task.next(compare_task).next(report_task)
-        sm = sfn.StateMachine(self, "AuditStateMachine", definition_body=sfn.DefinitionBody.from_chainable(definition), timeout=Duration.minutes(30))
+        extract_task = tasks.LambdaInvoke(self, "Extract",
+                                          lambda_function=extraction_fn,
+                                          output_path="$.Payload",
+                                          retry_on_service_exceptions=True)
+        agent_task = tasks.LambdaInvoke(self, "Agent",
+                                        lambda_function=agent_fn,
+                                        output_path="$.Payload",
+                                        retry_on_service_exceptions=True)
+        compare_task = tasks.LambdaInvoke(self, "Compare",
+                                          lambda_function=comparison_fn,
+                                          output_path="$.Payload",
+                                          retry_on_service_exceptions=True)
+        report_task = tasks.LambdaInvoke(self, "Report",
+                                         lambda_function=report_fn,
+                                         output_path="$.Payload",
+                                         retry_on_service_exceptions=True)
+        for t in [extract_task, agent_task, compare_task, report_task]:
+            t.add_retry(max_attempts=3, backoff_rate=1.5)
+
+        definition = extract_task.next(agent_task).next(compare_task).next(report_task)
+        sm = sfn.StateMachine(self, "AuditStateMachine",
+                              definition_body=sfn.DefinitionBody.from_chainable(definition),
+                              timeout=Duration.minutes(30))
 
         # permissions
         for fn in [ingestion_fn, extraction_fn, agent_fn, comparison_fn, report_fn]:

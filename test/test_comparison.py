@@ -1,4 +1,5 @@
-from lambda.comparison_lambda import compare_data
+import importlib
+compare_data = importlib.import_module("lambda.comparison_lambda").compare_data
 
 def test_compare_estimates():
     extracted = {
@@ -10,5 +11,5 @@ def test_compare_estimates():
         "total":160356.28
     }
     res = compare_data(extracted)
-    assert "estimated_savings" in res
-    assert res["estimated_savings"] >= 0
+    assert any(f["type"] == "rate_high_vs_mwo" for f in res["flags"])
+    assert res["estimated_savings"] == 385.0

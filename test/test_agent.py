@@ -1,4 +1,5 @@
-from lambda.agent_lambda import invoke_agent
+import importlib
+invoke_agent = importlib.import_module("lambda.agent_lambda").invoke_agent
 import os
 
 def test_agent_pipeline():
