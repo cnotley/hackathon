@@ -2,6 +2,13 @@ import os, json, logging, math, re
 from collections import Counter
 from decimal import Decimal
 import boto3
+try:
+    from dotenv import load_dotenv
+except Exception:  # pragma: no cover - optional dependency
+    def load_dotenv(*args, **kwargs):
+        return False
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 if not logger.handlers:
@@ -25,6 +32,24 @@ def resource(service, region=None):
     if is_localstack():
         kw["endpoint_url"] = os.environ["LOCALSTACK_URL"]
     return boto3.resource(service, **kw)
+
+
+def with_error_handling(func):
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"Error: {str(e)}", exc_info=True)
+            try:
+                cw = client("cloudwatch")
+                cw.put_metric_data(
+                    Namespace="AuditError",
+                    MetricData=[{"MetricName": "Errors", "Value": 1, "Unit": "Count"}],
+                )
+            except Exception:
+                pass
+            raise
+    return wrapper
 
 def json_dumps(obj):
     def default(o):

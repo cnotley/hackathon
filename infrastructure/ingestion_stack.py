@@ -121,7 +121,7 @@ class AuditFullStack(Stack):
             self,
             "SeedRatesFn",
             code=_lambda.Code.from_asset("lambda"),
-            handler="seed_kb.handler",
+            handler="seeding.seed_rates",
             runtime=_lambda.Runtime.PYTHON_3_12,
             timeout=Duration.seconds(60),
             environment={"MWO_TABLE_NAME": table.table_name},

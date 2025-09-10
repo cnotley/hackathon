@@ -2,6 +2,41 @@ import importlib
 handle_event = importlib.import_module("lambda.ingestion_lambda").handle_event
 validate_file_size = importlib.import_module("lambda.ingestion_lambda").validate_file_size
 
+
+def test_handle_event_multi(monkeypatch):
+    calls = []
+
+    def fake_process(rec):
+        calls.append(rec["s3"]["object"]["key"])
+        return {"bucket": rec["s3"]["bucket"]["name"], "key": rec["s3"]["object"]["key"]}
+
+    monkeypatch.setattr("lambda.ingestion_lambda.process_record", fake_process)
+    evt = {
+        "Records": [
+            {"s3": {"bucket": {"name": "b"}, "object": {"key": "a.pdf"}}},
+            {"s3": {"bucket": {"name": "b"}, "object": {"key": "b.pdf"}}},
+        ]
+    }
+    res = handle_event(evt, None)
+    assert len(calls) == 2
+    assert len(res["batch"]) == 2
+
+
+def test_seeding_trigger(monkeypatch):
+    called = {}
+
+    def fake_seed():
+        called["ok"] = True
+
+    monkeypatch.setattr("lambda.seeding.seed_rates", fake_seed)
+    evt = {
+        "Records": [
+            {"s3": {"bucket": {"name": "b"}, "object": {"key": "rates.json", "size": 1024}}}
+        ]
+    }
+    handle_event(evt, None)
+    assert called.get("ok")
+
 def test_small_file_ok():
     evt = {"Records":[{"s3":{"bucket":{"name":"invoices"},"object":{"key":"test_invoice.pdf","size":1024}}}]}
     res = handle_event(evt, None)

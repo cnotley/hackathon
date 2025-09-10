@@ -1,4 +1,5 @@
 import os, json, logging, time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from layers.common.python.common import client
 
 logger = logging.getLogger(__name__)
@@ -59,62 +60,70 @@ def _start_workflow(bucket, key):
             delay *= 1.5
     return {"status": "error", "error": "start_failed", "input": input_payload}
 
+def process_record(rec):
+    b = rec["s3"]["bucket"]["name"]
+    k = rec["s3"]["object"]["key"]
+    size = rec["s3"]["object"].get("size") or 0
+    if not size:
+        s3 = client("s3")
+        try:
+            head = s3.head_object(Bucket=b, Key=k)
+            size = head.get("ContentLength", 0)
+        except Exception as e:
+            logger.warning("HEAD failed for s3://%s/%s: %s", b, k, e)
+            size = 0
+    if not size:
+        msg = "unknown_size"
+        logger.error("Missing or zero size for s3://%s/%s", b, k)
+        try:
+            client("s3").put_object_tagging(
+                Bucket=b,
+                Key=k,
+                Tagging={"TagSet": [{"Key": "status", "Value": msg}]},
+            )
+        except Exception as tag_err:  # pragma: no cover - best effort
+            logger.warning("tagging failed for %s/%s: %s", b, k, tag_err)
+        return {"bucket": b, "key": k, "error": msg}
+    try:
+        validate_file_size(int(size))
+    except ValueError as e:
+        msg = str(e)
+        logger.error(msg)
+        try:
+            client("s3").put_object_tagging(
+                Bucket=b,
+                Key=k,
+                Tagging={"TagSet": [{"Key": "status", "Value": "rejected"}]},
+            )
+        except Exception as tag_err:  # pragma: no cover - best effort
+            logger.warning("tagging failed for %s/%s: %s", b, k, tag_err)
+        return {"bucket": b, "key": k, "error": msg}
+    logger.info("Accepting %s/%s size=%.2fMB", b, k, int(size) / (1024 * 1024))
+    start = _start_workflow(b, k)
+    try:
+        client("s3").put_object_tagging(
+            Bucket=b,
+            Key=k,
+            Tagging={"TagSet": [{"Key": "status", "Value": start.get("status")}]} ,
+        )
+    except Exception as tag_err:  # pragma: no cover - best effort
+        logger.warning("tagging failed for %s/%s: %s", b, k, tag_err)
+    if k.endswith("rates.json"):
+        try:
+            from .seeding import seed_rates
+            seed_rates()
+        except Exception as e:
+            logger.warning("seeding trigger failed: %s", e)
+    return {"bucket": b, "key": k, "start": start}
+
+
 def handle_event(event, context):
     """S3 ObjectCreated event -> validate size & start Step Functions.
     Reject files larger than MAX_UPLOAD_MB. Batch over multi-record events.
     """
     results = []
-    for rec in event.get("Records", []):
-        b = rec["s3"]["bucket"]["name"]
-        k = rec["s3"]["object"]["key"]
-        size = rec["s3"]["object"].get("size") or 0
-        if not size:
-            s3 = client("s3")
-            try:
-                head = s3.head_object(Bucket=b, Key=k)
-                size = head.get("ContentLength", 0)
-            except Exception as e:
-                logger.warning("HEAD failed for s3://%s/%s: %s", b, k, e)
-                size = 0
-        if not size:
-            msg = "unknown_size"
-            logger.error("Missing or zero size for s3://%s/%s", b, k)
-            results.append({"bucket": b, "key": k, "error": msg})
-            try:
-                client("s3").put_object_tagging(
-                    Bucket=b,
-                    Key=k,
-                    Tagging={"TagSet": [{"Key": "status", "Value": msg}]},
-                )
-            except Exception as tag_err:  # pragma: no cover - best effort
-                logger.warning("tagging failed for %s/%s: %s", b, k, tag_err)
-            continue
-        try:
-            validate_file_size(int(size))
-        except ValueError as e:
-            msg = str(e)
-            logger.error(msg)
-            results.append({"bucket": b, "key": k, "error": msg})
-            # attempt to tag object as rejected
-            try:
-                client("s3").put_object_tagging(
-                    Bucket=b,
-                    Key=k,
-                    Tagging={"TagSet": [{"Key": "status", "Value": "rejected"}]},
-                )
-            except Exception as tag_err:  # pragma: no cover - best effort
-                logger.warning("tagging failed for %s/%s: %s", b, k, tag_err)
-            continue
-        logger.info("Accepting %s/%s size=%.2fMB", b, k, int(size) / (1024 * 1024))
-        start = _start_workflow(b, k)
-        # tag object to show workflow started
-        try:
-            client("s3").put_object_tagging(
-                Bucket=b,
-                Key=k,
-                Tagging={"TagSet": [{"Key": "status", "Value": start.get("status")}]} ,
-            )
-        except Exception as tag_err:  # pragma: no cover - best effort
-            logger.warning("tagging failed for %s/%s: %s", b, k, tag_err)
-        results.append({"bucket": b, "key": k, "start": start})
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [executor.submit(process_record, rec) for rec in event.get("Records", [])]
+        for future in as_completed(futures):
+            results.append(future.result())
     return {"batch": results}
