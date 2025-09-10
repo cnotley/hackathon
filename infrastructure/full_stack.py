@@ -167,7 +167,17 @@ class MSAInvoiceAuditFullStack(Stack):
         self.common_layer = _lambda.LayerVersion(
             self,
             "MSACommonLayer",
-            code=_lambda.Code.from_asset("lambda/layers/common"),
+            code=_lambda.Code.from_asset(
+                "lambda/layers/common",
+                bundling=_lambda.BundlingOptions(
+                    image=_lambda.Runtime.PYTHON_3_11.bundling_image,
+                    command=[
+                        "bash",
+                        "-c",
+                        "set -euo pipefail; pip install --platform manylinux2014_x86_64 --only-binary=:all: -r ../../requirements.txt -t /asset-output && cp -au . /asset-output"
+                    ]
+                )
+            ),
             compatible_runtimes=[_lambda.Runtime.PYTHON_3_11],
             description="Common utilities for MSA Invoice Auditing System"
         )
@@ -262,7 +272,18 @@ class MSAInvoiceAuditFullStack(Stack):
             "MSAExtractionLambda",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="extraction_lambda.lambda_handler",
-            code=_lambda.Code.from_asset("lambda", exclude=["layers/**"]),
+            code=_lambda.Code.from_asset(
+                "lambda",
+                exclude=["layers/**"],
+                bundling=_lambda.BundlingOptions(
+                    image=_lambda.Runtime.PYTHON_3_11.bundling_image,
+                    command=[
+                        "bash",
+                        "-c",
+                        "set -euo pipefail; cd /asset-input && pip install --platform manylinux2014_x86_64 --only-binary=:all: -r ../requirements.txt -t /asset-output && cp -au . /asset-output"
+                    ]
+                )
+            ),
             role=lambda_base_role,
             timeout=Duration.minutes(15),
             memory_size=1024,
@@ -280,7 +301,18 @@ class MSAInvoiceAuditFullStack(Stack):
             "MSAAgentLambda",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="agent_lambda.lambda_handler",
-            code=_lambda.Code.from_asset("lambda", exclude=["layers/**"]),
+            code=_lambda.Code.from_asset(
+                "lambda",
+                exclude=["layers/**"],
+                bundling=_lambda.BundlingOptions(
+                    image=_lambda.Runtime.PYTHON_3_11.bundling_image,
+                    command=[
+                        "bash",
+                        "-c",
+                        "set -euo pipefail; cd /asset-input && pip install --platform manylinux2014_x86_64 --only-binary=:all: -r ../requirements.txt -t /asset-output && cp -au . /asset-output"
+                    ]
+                )
+            ),
             role=lambda_base_role,
             timeout=Duration.minutes(15),
             memory_size=2048,
@@ -297,7 +329,18 @@ class MSAInvoiceAuditFullStack(Stack):
             "MSAComparisonLambda",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="comparison_lambda.lambda_handler",
-            code=_lambda.Code.from_asset("lambda", exclude=["layers/**"]),
+            code=_lambda.Code.from_asset(
+                "lambda",
+                exclude=["layers/**"],
+                bundling=_lambda.BundlingOptions(
+                    image=_lambda.Runtime.PYTHON_3_11.bundling_image,
+                    command=[
+                        "bash",
+                        "-c",
+                        "set -euo pipefail; cd /asset-input && pip install --platform manylinux2014_x86_64 --only-binary=:all: -r ../requirements.txt -t /asset-output && cp -au . /asset-output"
+                    ]
+                )
+            ),
             role=lambda_base_role,
             timeout=Duration.minutes(10),
             memory_size=1024,
@@ -313,7 +356,18 @@ class MSAInvoiceAuditFullStack(Stack):
             "MSAReportLambda",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="report_lambda.lambda_handler",
-            code=_lambda.Code.from_asset("lambda", exclude=["layers/**"]),
+            code=_lambda.Code.from_asset(
+                "lambda",
+                exclude=["layers/**"],
+                bundling=_lambda.BundlingOptions(
+                    image=_lambda.Runtime.PYTHON_3_11.bundling_image,
+                    command=[
+                        "bash",
+                        "-c",
+                        "set -euo pipefail; cd /asset-input && pip install --platform manylinux2014_x86_64 --only-binary=:all: -r ../requirements.txt -t /asset-output && cp -au . /asset-output"
+                    ]
+                )
+            ),
             role=lambda_base_role,
             timeout=Duration.minutes(15),
             memory_size=2048,

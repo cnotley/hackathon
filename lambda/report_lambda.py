@@ -19,7 +19,6 @@ from io import BytesIO
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils.dataframe import dataframe_to_rows
-import pdfkit
 import markdown
 from botocore.exceptions import ClientError
 import subprocess
@@ -598,7 +597,7 @@ class PDFConverter:
             """
             
             # Convert HTML to PDF
-            pdf_content = pdfkit.from_string(styled_html, False, options=self.pdf_options)
+            pdf_content = subprocess.run(['wkhtmltopdf', '--quiet', '-', '-'], input=styled_html.encode(), capture_output=True, text=True).stdout
             
             logger.info("Successfully converted Markdown to PDF")
             return pdf_content
@@ -632,10 +631,10 @@ class ReportManager:
             excel_report = self.excel_generator.generate_excel_report(flags_data, metadata, extracted_data)
             
             # Convert Markdown to PDF
-            pdf_report = self.pdf_converter.markdown_to_pdf(markdown_report)
+            logger.warning("PDF conversion skipped; Excel report generated only")
             
             # Upload reports to S3
-            report_urls = self._upload_reports(report_id, markdown_report, excel_report, pdf_report)
+            report_urls = self._upload_reports(report_id, markdown_report, excel_report, b'')
 
             # CSV export of discrepancies (if present)
             try:

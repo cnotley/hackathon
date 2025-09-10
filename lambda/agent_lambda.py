@@ -530,13 +530,15 @@ def handle_audit_request(event: Dict[str, Any]) -> Dict[str, Any]:
 
         # If discrepancies require human review, return early with pending status
         audit_discrepancies = audit_results.get('discrepancies', [])
+        task_token = event.get('taskToken')
         if audit_discrepancies:
             pending_payload = {
                 'status': 'pending_approval',
                 'session_id': agent_response.get('session_id'),
                 'flags': audit_discrepancies,
                 'audit_results': audit_results,
-                'file_info': context['file_info']
+                'file_info': context['file_info'],
+                'task_token': task_token
             }
             logger.info("HITL approval required; pausing workflow")
             return pending_payload
@@ -625,17 +627,26 @@ def handle_hitl_approval(event: Dict[str, Any]) -> Dict[str, Any]:
         comparison_result = event.get('comparison_result', {})
         bucket = event.get('bucket')
         key = event.get('key')
+        task_token = event.get('taskToken')
 
         logger.info(f"Processing HITL approval for {bucket}/{key} (approved={approved})")
 
-        if approved and execution_arn:
+        if task_token:
+            sfn = stepfunctions_client
             try:
-                stepfunctions_client.send_task_success(
-                    taskToken=event['task_token'],
-                    output=json.dumps({'approved': True})
-                )
+                if approved:
+                    sfn.send_task_success(
+                        taskToken=task_token,
+                        output=json.dumps({'decision': 'approved'})
+                    )
+                else:
+                    sfn.send_task_failure(
+                        taskToken=task_token,
+                        error='Rejected',
+                        cause='User rejected discrepancies'
+                    )
             except Exception as e:
-                logger.error(f"Failed to resume Step Functions execution: {e}")
+                logger.error(f"Failed to signal Step Functions: {e}")
 
         if session_id:
             manager = BedrockAgentManager()

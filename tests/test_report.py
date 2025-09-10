@@ -24,10 +24,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'lambda'))
 from report_lambda import (
     BedrockReportGenerator,
     ExcelReportGenerator,
-    PDFConverter,
-    ReportManager,
-    lambda_handler,
-    handle_report_generation
+    ReportManager
 )
 
 
@@ -315,55 +312,6 @@ class TestExcelReportGenerator:
         assert '$77.00' in str(ws.cell(row=2, column=4).value)
 
 
-class TestPDFConverter:
-    """Test cases for PDFConverter class."""
-    
-    def setup_method(self):
-        """Set up test fixtures."""
-        self.converter = PDFConverter()
-    
-    @patch('report_lambda.pdfkit')
-    def test_markdown_to_pdf_success(self, mock_pdfkit):
-        """Test successful Markdown to PDF conversion."""
-        # Mock pdfkit response
-        mock_pdfkit.from_string.return_value = b'PDF content here'
-        
-        markdown_content = """
-# Test Report
-
-## Summary
-This is a test report with **bold** text and a table:
-
-| Item | Value |
-|------|-------|
-| Total | $375.00 |
-"""
-        
-        result = self.converter.markdown_to_pdf(markdown_content)
-        
-        # Assertions
-        assert result == b'PDF content here'
-        mock_pdfkit.from_string.assert_called_once()
-        
-        # Verify HTML was generated with styling
-        call_args = mock_pdfkit.from_string.call_args[0]
-        html_content = call_args[0]
-        assert '<h1>Test Report</h1>' in html_content
-        assert '<table>' in html_content
-        assert 'font-family: Arial' in html_content
-    
-    @patch('report_lambda.pdfkit')
-    def test_markdown_to_pdf_error(self, mock_pdfkit):
-        """Test PDF conversion error handling."""
-        # Mock pdfkit to raise exception
-        mock_pdfkit.from_string.side_effect = Exception("PDF generation failed")
-        
-        result = self.converter.markdown_to_pdf("# Test")
-        
-        # Should return empty bytes on error
-        assert result == b''
-
-
 class TestReportManager:
     """Test cases for ReportManager class."""
     
@@ -421,9 +369,7 @@ class TestReportManager:
     @mock_s3
     @patch('report_lambda.BedrockReportGenerator')
     @patch('report_lambda.ExcelReportGenerator')
-    @patch('report_lambda.PDFConverter')
-    def test_generate_comprehensive_report_success(self, mock_pdf_converter, 
-                                                 mock_excel_generator, mock_bedrock_generator):
+    def test_generate_comprehensive_report_success(self, mock_excel_generator, mock_bedrock_generator):
         """Test successful comprehensive report generation."""
         # Setup S3 mock
         s3_client = boto3.client('s3', region_name='us-east-1')
@@ -432,16 +378,13 @@ class TestReportManager:
         # Mock generators
         mock_bedrock_instance = Mock()
         mock_excel_instance = Mock()
-        mock_pdf_instance = Mock()
         
         mock_bedrock_generator.return_value = mock_bedrock_instance
-        mock_excel_generator.return_value = mock_excel_instance
-        mock_pdf_instance.return_value = mock_pdf_instance
+        mock_excel_instance.return_value = mock_excel_instance
         
         # Configure mock responses
         mock_bedrock_instance.generate_markdown_report.return_value = "# Test Report\n\nContent here"
         mock_excel_instance.generate_excel_report.return_value = b'Excel content'
-        mock_pdf_instance.markdown_to_pdf.return_value = b'PDF content'
         
         # Mock S3 uploads
         with patch.object(self.manager, '_upload_reports') as mock_upload:
@@ -499,25 +442,23 @@ class TestReportManager:
         report_id = "test-report-123"
         markdown_content = "# Test Report"
         excel_content = b'Excel content'
-        pdf_content = b'PDF content'
         
         # Upload reports
         with patch.dict(os.environ, {'REPORTS_BUCKET': 'msa-audit-reports'}):
-            result = self.manager._upload_reports(report_id, markdown_content, excel_content, pdf_content)
+            result = self.manager._upload_reports(report_id, markdown_content, excel_content, None)
         
         # Verify uploads
         assert 'markdown' in result
         assert 'excel' in result
-        assert 'pdf' in result
+        assert 'pdf' not in result # PDF is no longer generated
         
         # Verify S3 objects were created
         objects = s3_client.list_objects_v2(Bucket='msa-audit-reports')
-        assert objects['KeyCount'] == 3
+        assert objects['KeyCount'] == 2 # Markdown, Excel
         
         keys = [obj['Key'] for obj in objects['Contents']]
         assert f'reports/{report_id}/{report_id}.md' in keys
         assert f'reports/{report_id}/{report_id}.xlsx' in keys
-        assert f'reports/{report_id}/{report_id}.pdf' in keys
 
 
 class TestLambdaHandler:
@@ -654,8 +595,7 @@ class TestIntegrationScenarios:
     
     @mock_s3
     @patch('report_lambda.bedrock_client')
-    @patch('report_lambda.pdfkit')
-    def test_complete_report_generation_workflow(self, mock_pdfkit, mock_bedrock_client):
+    def test_complete_report_generation_workflow(self, mock_bedrock_client):
         """Test complete report generation workflow with all components."""
         # Setup S3 mock
         s3_client = boto3.client('s3', region_name='us-east-1')
@@ -673,7 +613,6 @@ class TestIntegrationScenarios:
         mock_bedrock_client.invoke_model.return_value = mock_bedrock_response
         
         # Mock PDF generation
-        mock_pdfkit.from_string.return_value = b'Generated PDF content'
         
         # Comprehensive test data matching requirements
         flags_data = {
@@ -734,11 +673,10 @@ class TestIntegrationScenarios:
         mock_bedrock_client.invoke_model.assert_called_once()
         
         # Verify PDF generation was attempted
-        mock_pdfkit.from_string.assert_called_once()
         
         # Verify S3 uploads occurred
         objects = s3_client.list_objects_v2(Bucket='msa-audit-reports')
-        assert objects['KeyCount'] == 3  # Markdown, Excel, PDF
+        assert objects['KeyCount'] == 2  # Markdown, Excel
     
     def test_excel_summary_total_matches_requirements(self):
         """Test that Excel summary total matches requirements ($148,478.04 adjusted)."""

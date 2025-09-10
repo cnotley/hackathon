@@ -88,7 +88,7 @@
         }
       },
       "ResultPath": "$.comparison",
-      "Next": "GenerateReport",
+      "Next": "CheckForApproval",
       "Retry": [
         {
           "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
@@ -101,6 +101,37 @@
         {
           "ErrorEquals": ["States.ALL"],
           "Next": "ComparisonFailed",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "CheckForApproval": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.comparison.Payload.discrepancy_analysis.summary.total_discrepancies",
+          "NumericGreaterThan": 0,
+          "Next": "WaitForApproval"
+        }
+      ],
+      "Default": "GenerateReport"
+    },
+    "WaitForApproval": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+      "Parameters": {
+        "FunctionName": "${AgentLambdaArn}",
+        "Payload": {
+          "action": "hitl_approval",
+          "flags.$": "$.comparison.Payload.discrepancy_analysis",
+          "taskToken": "$$.Task.Token"
+        }
+      },
+      "Next": "GenerateReport",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "Next": "ReportGenerationFailed",
           "ResultPath": "$.error"
         }
       ]

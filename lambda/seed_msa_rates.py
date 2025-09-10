@@ -13,6 +13,7 @@ from typing import Dict, Any, List
 from datetime import datetime, timedelta
 from decimal import Decimal
 from botocore.exceptions import ClientError
+import time
 
 # Configure logging
 logger = logging.getLogger()
@@ -28,6 +29,20 @@ def seed_msa_rates() -> Dict[str, Any]:
     """Seed MSA rates table with standard rates like RS:70 as mentioned in requirements."""
     try:
         table = dynamodb.Table(MSA_RATES_TABLE)
+
+        # Ensure table exists with retries
+        for attempt in range(5):
+            try:
+                table.load()
+                break
+            except ClientError as e:
+                if e.response['Error']['Code'] == 'ResourceNotFoundException':
+                    logger.info(f"DynamoDB table {MSA_RATES_TABLE} not found (attempt {attempt + 1}/5); retrying in 5s...")
+                    time.sleep(5)
+                else:
+                    raise
+        else:
+            raise ValueError(f"DynamoDB table {MSA_RATES_TABLE} not found after retries. Deploy infrastructure first.")
         
         # Get current effective date
         effective_date = datetime.utcnow().strftime('%Y-%m-%d')

@@ -150,25 +150,33 @@ class InvoiceIngestionStack(Stack):
         )
         
         # Create Lambda function
-        lambda_function = _lambda.Function(
+        self.ingestion_lambda = _lambda.Function(
             self,
-            "IngestionLambda",
-            function_name="ingestion-lambda",
+            "MSAIngestionLambda",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="handler.lambda_handler",
-            code=_lambda.Code.from_asset("lambda/ingestion"),
-            layers=[self.common_layer],
+            code=_lambda.Code.from_asset(
+                "lambda/ingestion",
+                bundling=_lambda.BundlingOptions(
+                    image=_lambda.Runtime.PYTHON_3_11.bundling_image,
+                    command=[
+                        "bash",
+                        "-c",
+                        "set -euo pipefail; cd /asset-input && pip install --platform manylinux2014_x86_64 --only-binary=:all: -r ../../requirements.txt -t /asset-output && cp -au . /asset-output"
+                    ]
+                )
+            ),
             role=lambda_role,
             timeout=Duration.minutes(5),
             memory_size=512,
             environment={
-                "BUCKET_NAME": self.bucket.bucket_name,
-                "LOG_LEVEL": "INFO"
+                "STEP_FUNCTION_ARN": self.state_machine.state_machine_arn,
+                "BUCKET_NAME": self.bucket.bucket_name
             },
-            log_retention=logs.RetentionDays.ONE_WEEK
+            events=[]
         )
         
-        return lambda_function
+        return self.ingestion_lambda
 
     def _create_extraction_lambda_function(self) -> _lambda.Function:
         """Create Lambda function for data extraction using Textract and pandas."""
