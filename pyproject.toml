@@ -1,8 +1,6 @@
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
-
 [project]
-name = "disaster-audit-proto"
+name = "grt-hackathon-team8-mcp"
 version = "0.1.0"
-description = "Disaster recovery invoice auditing prototype"

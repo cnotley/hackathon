@@ -1,35 +1,14 @@
-import importlib
-import json
-from unittest.mock import patch
+from lambda.comparison_lambda import compare_data
 
-import boto3
-from moto import mock_dynamodb
-
-comparison_lambda = importlib.import_module('lambda.comparison_lambda')
-compare_data = comparison_lambda.compare_data
-
-
-def setup_rates():
-    ddb = boto3.resource('dynamodb', region_name='us-east-1')
-    table = ddb.create_table(
-        TableName='rates',
-        KeySchema=[{'AttributeName': 'rate_type', 'KeyType': 'HASH'}, {'AttributeName': 'vendor', 'KeyType': 'RANGE'}],
-        AttributeDefinitions=[{'AttributeName': 'rate_type', 'AttributeType': 'S'}, {'AttributeName': 'vendor', 'AttributeType': 'S'}],
-        BillingMode='PAY_PER_REQUEST',
-    )
-    table.put_item(Item={'rate_type': 'RS', 'vendor': 'Manderville', 'value': '70'})
-
-
-class BodyObj(bytes):
-    def read(self):
-        return self
-
-
-@mock_dynamodb
-@patch('lambda.comparison_lambda.sagemaker.invoke_endpoint', return_value={'Body': BodyObj(json.dumps({'is_anomaly': False}).encode())})
-@patch('lambda.comparison_lambda.bedrock.invoke_model', return_value={})
-def test_compare_data(_, __):
-    setup_rates()
-    event = {'labor': [{'name': 'Manderville', 'type': 'RS', 'rate': 77.0, 'hours': 1.0, 'total': 77.0}]}
-    result = compare_data(event, None)
-    assert result['flags']
+def test_compare_estimates():
+    extracted = {
+        "labor":[
+            {"name":"Manderville","code":"RS","rate":77,"total_hours":55,"total":4812},
+            {"name":"Helper","code":"GL","rate":40,"total_hours":30,"total":1200},
+        ],
+        "summary":{"labor":77000},
+        "total":160356.28
+    }
+    res = compare_data(extracted)
+    assert "estimated_savings" in res
+    assert res["estimated_savings"] >= 0

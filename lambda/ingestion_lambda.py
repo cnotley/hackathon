@@ -1,72 +1,52 @@
-import json
-import os
-import logging
-import time
-from typing import Any, Dict, List
+import os, json, logging
+from layers.common.python.common import client
 
-import boto3
-from botocore.exceptions import ClientError
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    logging.basicConfig(level=logging.INFO)
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+MAX_MB = int(os.environ.get("MAX_UPLOAD_MB", "5"))
 
-s3 = boto3.client('s3')
-step = boto3.client('stepfunctions')
+def _start_workflow(bucket, key):
+    sfn = client("stepfunctions")
+    input_payload = {"bucket": bucket, "key": key}
+    arn = os.environ.get("STATE_MACHINE_ARN")
+    if not arn:
+        try:
+            resp = sfn.list_state_machines()
+            if resp.get("stateMachines"):
+                arn = resp["stateMachines"][0]["stateMachineArn"]
+        except Exception as e:
+            logger.warning("Could not list state machines: %s", e)
+    if not arn:
+        return {"status":"no_state_machine","input":input_payload}
+    sfn.start_execution(stateMachineArn=arn, input=json.dumps(input_payload))
+    return {"status":"started","stateMachineArn": arn}
 
-
-def _validate_size(bucket: str, key: str) -> None:
-    """Ensure the object is smaller than 5MB."""
-    try:
-        head = s3.head_object(Bucket=bucket, Key=key)
-        size = head.get('ContentLength', 0)
-        if size > 5 * 1024 * 1024:
-            raise ValueError('File too large, split required')
-    except ClientError as exc:
-        logger.error("head_object failed: %s", exc)
-        raise
-
-
-def _start_execution(files: List[Dict[str, str]]) -> None:
-    payload = json.dumps({'files': files})
-    arn = os.environ['STATE_MACHINE_ARN']
-    try:
-        step.start_execution(stateMachineArn=arn, input=payload)
-    except ClientError as exc:
-        if exc.response['Error']['Code'] == 'ThrottlingException':
-            backoff = 1
-            for _ in range(5):
-                time.sleep(backoff)
-                try:
-                    step.start_execution(stateMachineArn=arn, input=payload)
-                    return
-                except ClientError as err:
-                    if err.response['Error']['Code'] != 'ThrottlingException':
-                        raise
-                    backoff = min(backoff * 2, 30)
-            raise
-        else:
-            logger.error("start_execution failed: %s", exc)
-            raise
-
-
-def handle_event(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-    """Lambda handler for S3 events."""
-    records = event.get('Records') or []
-    if not records:
-        raise ValueError('No records in event')
-
-    batch: List[Dict[str, str]] = []
-    for rec in records:
-        s3info = rec['s3']
-        bucket = s3info['bucket']['name']
-        key = s3info['object']['key']
-        logger.info("Processing %s", key)
-        _validate_size(bucket, key)
-        batch.append({'bucket': bucket, 'key': key})
-        if len(batch) == 10:
-            _start_execution(batch)
-            batch = []
-    if batch:
-        _start_execution(batch)
-
-    return {'status': 'started', 'files': len(records)}
+def handle_event(event, context):
+    """S3 ObjectCreated event -> validate size & start Step Functions.
+    Reject files larger than MAX_UPLOAD_MB. Batch over multi-record events.
+    """
+    results = []
+    for rec in event.get("Records", []):
+        b = rec["s3"]["bucket"]["name"]
+        k = rec["s3"]["object"]["key"]
+        size = rec["s3"]["object"].get("size") or rec["s3"]["object"].get("sequencer") or 0
+        if not size:
+            s3 = client("s3")
+            try:
+                head = s3.head_object(Bucket=b, Key=k)
+                size = head.get("ContentLength", 0)
+            except Exception as e:
+                logger.warning("HEAD failed for s3://%s/%s: %s", b, k, e)
+                size = 0
+        size_mb = (int(size) / (1024*1024))
+        if size_mb > MAX_MB:
+            msg = f"File too large ({size_mb:.2f}MB) > {MAX_MB}MB limit"
+            logger.error(msg)
+            results.append({"bucket": b, "key": k, "error": msg})
+            continue
+        logger.info("Accepting %s/%s size=%.2fMB", b, k, size_mb)
+        start = _start_workflow(b, k)
+        results.append({"bucket": b, "key": k, "start": start})
+    return {"batch": results}

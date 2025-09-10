@@ -1,13 +1,8 @@
-import importlib
-from unittest.mock import patch
+from lambda.report_lambda import generate_report
 
-report_lambda = importlib.import_module('lambda.report_lambda')
-generate_report = report_lambda.generate_report
-
-
-@patch('lambda.report_lambda.s3.upload_file')
-def test_generate_report(mock_upload):
-    event = {'flags': [{'details': 'RS rate 10% high'}], 'bucket': 'b', 'key': 'k.xlsx'}
-    result = generate_report(event, None)
-    assert result['bucket'] == 'b'
-    mock_upload.assert_called()
+def test_report_outputs():
+    extr = {"invoice_number":"3034894","project":"Liverpool","loss_date":"02/12/2025","summary":{"labor":77000},"labor":[{"name":"Manderville","type":"Restoration Specialist","code":"RS","rate":77,"total_hours":55,"total":4812}]}
+    comp = {"flags":[{"type":"rate_high_vs_mwo","code":"RS","expected":70,"seen":77}], "estimated_savings": 16000}
+    out = generate_report(extr, comp, out_bucket=None)
+    assert "report.xlsx" in out["generated"]
+    assert "report.md" in out["generated"]

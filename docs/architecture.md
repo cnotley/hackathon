@@ -1,15 +1,17 @@
 # Architecture
 
 ```mermaid
-graph TD
-    A[S3 Bucket] -->|PUT Event| B[Ingestion Lambda]
-    B --> C[Step Functions Workflow]
-    C --> D[Extraction Lambda]
-    C --> E[Agent Lambda]
-    C --> F[Comparison Lambda]
-    F --> G[SageMaker Anomaly Endpoint]
-    F --> H[DynamoDB Rates]
-    C --> I[Report Lambda]
-    I --> J[S3 Reports]
-    C --> K[UI Streamlit]
+flowchart LR
+  U[User] -->|Upload| S3[(S3 invoices)]
+  S3 --> ING[Ingestion Lambda]
+  ING --> SFN[(Step Functions)]
+  SFN --> EXT[Extraction Lambda]
+  EXT --> AGT[Agent Lambda]
+  AGT --> CMP[Comparison Lambda]
+  CMP --> RPT[Report Lambda]
+  DDB[(DynamoDB mwo-rates)] --> CMP
+  SM[(SageMaker)] --> CMP
+  BDR[(Bedrock)] --> AGT
+  RPT --> S3R[(S3 reports)]
+  RPT --> UI[Streamlit]
 ```

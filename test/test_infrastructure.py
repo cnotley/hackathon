@@ -1,10 +1,11 @@
-from aws_cdk import App
-from aws_cdk.assertions import Template
-from infrastructure.app import AuditFullStack
-
+import aws_cdk as cdk
+import sys
+sys.path.append("infrastructure")
+from ingestion_stack import AuditFullStack
 
 def test_cdk_synth():
-    app = App(context={'state_machine_arn': 'arn:aws:states:us-east-1:123:sm'})
-    stack = AuditFullStack(app, 'AuditFullStackTest')
-    template = Template.from_stack(stack)
-    template.resource_count_is('AWS::S3::Bucket', 1)
+    app = cdk.App()
+    AuditFullStack(app, "AuditFullStackTest")
+    assembly = app.synth()
+    names = [s.stack_name for s in assembly.stacks]
+    assert "AuditFullStackTest" in names

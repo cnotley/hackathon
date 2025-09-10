@@ -1,47 +1,40 @@
-import base64
-import json
-import time
-from typing import Any, Dict
-
-import boto3
-import pandas as pd
+import os, tempfile
 import streamlit as st
+from lambda.agent_lambda import invoke_agent
+from lambda.report_lambda import generate_report, _markdown_from_flags, _excel_from_data
 
+def _save_uploaded_file(uploaded_file):
+    path = os.path.join(tempfile.gettempdir(), uploaded_file.name)
+    with open(path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    return path
 
-def _invoke_agent(file_bytes: bytes, query: str) -> Dict[str, Any]:
-    client = boto3.client('lambda')
-    payload = {'file': base64.b64encode(file_bytes).decode(), 'query': query}
-    resp = client.invoke(FunctionName='agent_lambda', Payload=json.dumps(payload))
-    data = resp['Payload'].read()
-    return json.loads(data or '{}')
+def main():
+    st.set_page_config(page_title="DR Invoice Auditor")
+    st.title("Disaster Recovery Invoice Auditor")
+    up = st.file_uploader("Upload invoice PDF", type=["pdf"])
+    query = st.text_input("Agent query", "audit")
+    run = st.button("Audit", type="primary")
 
+    if run and up is not None:
+        path = _save_uploaded_file(up)
+        with st.spinner("Running pipeline..."):
+            res = invoke_agent({"action":"audit","local_path": path})
+        extracted, comparison = res["extracted"], res["comparison"]
+        st.subheader("Flags")
+        if not comparison["flags"]:
+            st.success("No issues detected")
+        else:
+            for f in comparison["flags"]:
+                st.write(f)
+        st.metric("Estimated Savings", f"${comparison['estimated_savings']:,}")
+        md_text = _markdown_from_flags(extracted, comparison)
+        st.download_button("Download Markdown", data=md_text.encode("utf-8"), file_name="audit_report.md")
+        import tempfile
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
+        _excel_from_data(extracted, comparison, tmp)
+        with open(tmp, "rb") as f:
+            st.download_button("Download Excel", data=f.read(), file_name="audit_report.xlsx")
 
-def main() -> None:
-    st.title('Invoice Auditor')
-    if 'user' not in st.session_state:
-        st.session_state['user'] = ''
-    st.session_state['user'] = st.text_input('Username', st.session_state['user'])
-
-    file = st.file_uploader('Upload PDF/Excel', type=['pdf', 'xlsx'])
-    query = st.text_input('Audit Query', 'Audit invoice for discrepancies')
-
-    if st.button('Audit'):
-        if not file:
-            st.error('No file uploaded')
-            return
-        data = file.getvalue()
-        if len(data) > 5 * 1024 * 1024:
-            st.error('Too large')
-            return
-        with st.spinner('Processing...'):
-            result = _invoke_agent(data, query)
-            st.markdown('### Agent Response')
-            st.write(result)
-            flags = result.get('flags', [])
-            if flags:
-                st.markdown('### Flags')
-                st.dataframe(pd.DataFrame(flags))
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

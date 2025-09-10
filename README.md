@@ -1,36 +1,20 @@
-# Disaster Recovery Invoice Auditing Prototype
+# Disaster Recovery Invoice Auditing Prototype (AWS Serverless)
 
-This project implements a serverless Python application for auditing disaster recovery invoices using AWS services. It includes ingestion, extraction, AI agent reasoning, comparison, report generation, and a Streamlit UI. Infrastructure is managed via AWS CDK v2.
+**Tech stack:** S3, Textract, Bedrock, Lambda, Step Functions, DynamoDB, SageMaker (anomaly detection), Streamlit UI, AWS CDK (Python).
 
-## Setup
+**Local dev:** LocalStack + pdfplumber fallback for Textract, sklearn IsolationForest fallback for SageMaker, simple Bedrock/Comprehend fallbacks.
 
-1. Create virtual environment and install requirements:
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
 
-2. Install and start LocalStack for local testing:
-```bash
-pip install localstack awscli-local
-localstack start -d
-```
+## Quick start (local, fully offline)
+1. Python 3.10+ and pip
+2. `pip install -r requirements.txt`
+3. Optional: `localstack start -d` then `export LOCALSTACK_URL=http://localhost:4566`
+4. Run tests: `pytest -q`
+5. Start UI: `streamlit run ui/app.py`
 
-3. Deploy infrastructure using CDK:
+## AWS deploy (synth)
 ```bash
 cd infrastructure
-cdk deploy
+cdk synth
 ```
-
-4. Run tests:
-```bash
-pytest
-```
-
-5. Launch Streamlit UI:
-```bash
-streamlit run ui/app.py
-```
-
-Ensure AWS credentials are configured. See `docs/deployment.md` for detailed deployment instructions.
+See `docs/deployment.md` for full deployment notes.

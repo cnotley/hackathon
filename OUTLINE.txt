@@ -1,7 +1,1 @@
-- Ingestion: S3 event triggers Lambda to start Step Functions workflow
-- Extraction: Textract/Bedrock to parse invoice
-- Agent: Bedrock agent orchestrates comparison
-- Comparison: Validate against DynamoDB rates and SageMaker anomalies
-- Report: Generate Excel/PDF summaries
-- Seeding: Populate DynamoDB with default rates
-- UI: Streamlit frontend for uploads and results
+See README and docs for details.

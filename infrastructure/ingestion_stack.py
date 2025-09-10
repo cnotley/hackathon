@@ -1,45 +1,111 @@
 from aws_cdk import (
-    Stack,
-    Duration,
-    aws_lambda as _lambda,
+    Stack, Duration,
     aws_s3 as s3,
+    aws_lambda as _lambda,
+    aws_stepfunctions as sfn,
+    aws_stepfunctions_tasks as tasks,
+    aws_dynamodb as dynamodb,
     aws_s3_notifications as s3n,
+    aws_logs as logs,
+    aws_iam as iam,
 )
 from constructs import Construct
 
-
-class IngestionStack(Stack):
-    """Stack creating S3 bucket and ingestion Lambda."""
-
-    def __init__(self, scope: Construct, construct_id: str, *, state_machine_arn: str, **kwargs) -> None:
+class AuditFullStack(Stack):
+    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        bucket = s3.Bucket(
-            self,
-            'InvoiceBucket',
-            versioned=True,
-            cors=[s3.CorsRule(allowed_methods=[s3.HttpMethods.GET, s3.HttpMethods.PUT], allowed_origins=['*'], allowed_headers=['*'])],
-        )
+        invoices_bucket = s3.Bucket(self, "InvoicesBucket", versioned=True, block_public_access=s3.BlockPublicAccess.BLOCK_ALL)
+        reports_bucket = s3.Bucket(self, "ReportsBucket", versioned=True, block_public_access=s3.BlockPublicAccess.BLOCK_ALL)
 
-        layer = _lambda.LayerVersion(
-            self,
-            'CommonLayer',
-            code=_lambda.Code.from_asset('layers/common'),
-            compatible_runtimes=[_lambda.Runtime.PYTHON_3_12],
-        )
+        table = dynamodb.Table(self, "MwoRates",
+                               partition_key=dynamodb.Attribute(name="code", type=dynamodb.AttributeType.STRING),
+                               billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+                               point_in_time_recovery=True)
 
-        fn = _lambda.Function(
-            self,
-            'IngestionLambda',
+        common_layer = _lambda.LayerVersion(self, "CommonLayer",
+                                            code=_lambda.Code.from_asset("layers/common"),
+                                            compatible_runtimes=[_lambda.Runtime.PYTHON_3_12])
+
+        env = {
+            "INVOICES_BUCKET": invoices_bucket.bucket_name,
+            "REPORTS_BUCKET": reports_bucket.bucket_name,
+            "MWO_TABLE_NAME": table.table_name,
+            "OCR_MIN_CONF": "0.8",
+            "MAX_UPLOAD_MB": "5",
+        }
+
+        ingestion_fn = _lambda.Function(self, "IngestionLambda",
+            code=_lambda.Code.from_asset("lambda"),
+            handler="ingestion_lambda.handle_event",
             runtime=_lambda.Runtime.PYTHON_3_12,
-            handler='ingestion_lambda.handle_event',
-            code=_lambda.Code.from_asset('lambda'),
+            timeout=Duration.seconds(30),
             memory_size=256,
-            timeout=Duration.minutes(15),
-            layers=[layer],
-            environment={'STATE_MACHINE_ARN': state_machine_arn},
+            environment=env,
+            layers=[common_layer],
+            log_retention=logs.RetentionDays.ONE_WEEK,
         )
 
-        bucket.add_event_notification(s3.EventType.OBJECT_CREATED, s3n.LambdaDestination(fn))
-        self.bucket = bucket
-        self.ingestion_lambda = fn
+        extraction_fn = _lambda.Function(self, "ExtractionLambda",
+            code=_lambda.Code.from_asset("lambda"),
+            handler="extraction_lambda.extract_handler",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            timeout=Duration.seconds(900),
+            memory_size=2048,
+            environment=env,
+            layers=[common_layer],
+            log_retention=logs.RetentionDays.ONE_WEEK,
+        )
+
+        agent_fn = _lambda.Function(self, "AgentLambda",
+            code=_lambda.Code.from_asset("lambda"),
+            handler="agent_lambda.invoke_agent",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            timeout=Duration.seconds(120),
+            memory_size=512,
+            environment=env,
+            layers=[common_layer],
+            log_retention=logs.RetentionDays.ONE_WEEK,
+        )
+
+        comparison_fn = _lambda.Function(self, "ComparisonLambda",
+            code=_lambda.Code.from_asset("lambda"),
+            handler="comparison_lambda.compare_handler",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            timeout=Duration.seconds(120),
+            memory_size=1024,
+            environment=env,
+            layers=[common_layer],
+            log_retention=logs.RetentionDays.ONE_WEEK,
+        )
+
+        report_fn = _lambda.Function(self, "ReportLambda",
+            code=_lambda.Code.from_asset("lambda"),
+            handler="report_lambda.generate_handler",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            timeout=Duration.seconds(120),
+            memory_size=1536,
+            environment=env,
+            layers=[common_layer],
+            log_retention=logs.RetentionDays.ONE_WEEK,
+        )
+
+        # Step Functions: Extract -> Compare -> Report
+        extract_task = tasks.LambdaInvoke(self, "Extract", lambda_function=extraction_fn, output_path="$.Payload")
+        compare_task = tasks.LambdaInvoke(self, "Compare", lambda_function=comparison_fn, output_path="$.Payload")
+        report_task = tasks.LambdaInvoke(self, "Report", lambda_function=report_fn, output_path="$.Payload")
+        definition = extract_task.next(compare_task).next(report_task)
+        sm = sfn.StateMachine(self, "AuditStateMachine", definition_body=sfn.DefinitionBody.from_chainable(definition), timeout=Duration.minutes(30))
+
+        # permissions
+        for fn in [ingestion_fn, extraction_fn, agent_fn, comparison_fn, report_fn]:
+            invoices_bucket.grant_read(fn)
+        reports_bucket.grant_read_write(report_fn)
+        table.grant_read_data(comparison_fn)
+
+        sm.grant_start_execution(ingestion_fn)
+        invoices_bucket.add_event_notification(s3.EventType.OBJECT_CREATED, s3n.LambdaDestination(ingestion_fn))
+
+        # Bedrock, Comprehend, Textract, StepFunctions wide-open for prototype
+        for fn in [extraction_fn, agent_fn, comparison_fn, report_fn, ingestion_fn]:
+            fn.add_to_role_policy(iam.PolicyStatement(actions=["textract:*","bedrock:*","comprehend:*","states:*","sagemaker:InvokeEndpoint"], resources=["*"]))

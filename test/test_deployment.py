@@ -1,12 +1,6 @@
-import pytest
+import subprocess, sys
 
-try:
-    from infrastructure.app import main
-except ModuleNotFoundError:  # aws_cdk may be missing
-    main = None
-
-
-def test_cdk_main():
-    if main is None:
-        pytest.skip('aws_cdk not installed')
-    main()
+def test_cdk_synth_cli():
+    # Verify CDK app module runs without error
+    cmd = [sys.executable, "-c", "import aws_cdk as cdk, sys; sys.path.append('infrastructure'); import app"]
+    subprocess.run(cmd, check=True)
