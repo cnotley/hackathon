@@ -172,7 +172,7 @@ class MSAInvoiceAuditFullStack(Stack):
             description="Common utilities for MSA Invoice Auditing System"
         )
         
-        # Deprecated wkhtmltopdf layer removed – relying on native Excel/PDF generation
+        # Layers now rely on root requirements.txt during bundling
     
     def _create_lambda_functions(self) -> None:
         """Create all Lambda functions."""
