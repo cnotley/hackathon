@@ -426,162 +426,6 @@
     "aws:cdk:path": "MSAInvoiceAuditFullStack/ReportsBucket/AutoDeleteObjectsCustomResource/Default"
    }
   },
-  "IngestionLambdaServiceRole447B9B96": {
-   "Type": "AWS::IAM::Role",
-   "Properties": {
-    "AssumeRolePolicyDocument": {
-     "Statement": [
-      {
-       "Action": "sts:AssumeRole",
-       "Effect": "Allow",
-       "Principal": {
-        "Service": "lambda.amazonaws.com"
-       }
-      }
-     ],
-     "Version": "2012-10-17"
-    },
-    "ManagedPolicyArns": [
-     {
-      "Fn::Join": [
-       "",
-       [
-        "arn:",
-        {
-         "Ref": "AWS::Partition"
-        },
-        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-       ]
-      ]
-     }
-    ],
-    "Tags": [
-     {
-      "Key": "Environment",
-      "Value": "Prototype"
-     },
-     {
-      "Key": "Owner",
-      "Value": "GRT-Hackathon-Team8"
-     },
-     {
-      "Key": "Project",
-      "Value": "MSA-Invoice-Auditing"
-     }
-    ]
-   },
-   "Metadata": {
-    "aws:cdk:path": "MSAInvoiceAuditFullStack/IngestionLambda/ServiceRole/Resource"
-   }
-  },
-  "IngestionLambdaServiceRoleDefaultPolicyD3A17461": {
-   "Type": "AWS::IAM::Policy",
-   "Properties": {
-    "PolicyDocument": {
-     "Statement": [
-      {
-       "Action": [
-        "s3:GetObject*",
-        "s3:GetBucket*",
-        "s3:List*",
-        "s3:DeleteObject*",
-        "s3:PutObject",
-        "s3:PutObjectLegalHold",
-        "s3:PutObjectRetention",
-        "s3:PutObjectTagging",
-        "s3:PutObjectVersionTagging",
-        "s3:Abort*"
-       ],
-       "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "IngestionBucket917A3A3A",
-          "Arn"
-         ]
-        },
-        {
-         "Fn::Join": [
-          "",
-          [
-           {
-            "Fn::GetAtt": [
-             "IngestionBucket917A3A3A",
-             "Arn"
-            ]
-           },
-           "/*"
-          ]
-         ]
-        }
-       ]
-      }
-     ],
-     "Version": "2012-10-17"
-    },
-    "PolicyName": "IngestionLambdaServiceRoleDefaultPolicyD3A17461",
-    "Roles": [
-     {
-      "Ref": "IngestionLambdaServiceRole447B9B96"
-     }
-    ]
-   },
-   "Metadata": {
-    "aws:cdk:path": "MSAInvoiceAuditFullStack/IngestionLambda/ServiceRole/DefaultPolicy/Resource"
-   }
-  },
-  "IngestionLambdaEF25F265": {
-   "Type": "AWS::Lambda::Function",
-   "Properties": {
-    "Code": {
-     "S3Bucket": {
-      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
-     },
-     "S3Key": "8f519d98e55328a0ab8baf10a6db94574428c1d726cb64fafacdfe277d1af7e8.zip"
-    },
-    "Environment": {
-     "Variables": {
-      "INGESTION_BUCKET_NAME": {
-       "Ref": "IngestionBucket917A3A3A"
-      }
-     }
-    },
-    "Handler": "ingestion_lambda.lambda_handler",
-    "MemorySize": 512,
-    "Role": {
-     "Fn::GetAtt": [
-      "IngestionLambdaServiceRole447B9B96",
-      "Arn"
-     ]
-    },
-    "Runtime": "python3.11",
-    "Tags": [
-     {
-      "Key": "Environment",
-      "Value": "Prototype"
-     },
-     {
-      "Key": "Owner",
-      "Value": "GRT-Hackathon-Team8"
-     },
-     {
-      "Key": "Project",
-      "Value": "MSA-Invoice-Auditing"
-     }
-    ],
-    "Timeout": 300
-   },
-   "DependsOn": [
-    "IngestionLambdaServiceRoleDefaultPolicyD3A17461",
-    "IngestionLambdaServiceRole447B9B96"
-   ],
-   "Metadata": {
-    "aws:cdk:path": "MSAInvoiceAuditFullStack/IngestionLambda/Resource",
-    "aws:asset:path": "asset.8f519d98e55328a0ab8baf10a6db94574428c1d726cb64fafacdfe277d1af7e8",
-    "aws:asset:is-bundled": true,
-    "aws:asset:property": "Code"
-   }
-  },
   "MsaRatesTable67DF6646": {
    "Type": "AWS::DynamoDB::Table",
    "Properties": {
@@ -937,6 +781,1003 @@
     "aws:cdk:path": "MSAInvoiceAuditFullStack/SeedMsaRates/Default"
    }
   },
+  "IngestionLambdaServiceRole18B9A982": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ],
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/IngestionLambdaServiceRole/Resource"
+   }
+  },
+  "IngestionLambdaServiceRoleDefaultPolicy86B4BC08": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:ListBucket"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "IngestionBucket917A3A3A",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "IngestionBucket917A3A3A",
+             "Arn"
+            ]
+           },
+           "/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": [
+        "s3:GetObject*",
+        "s3:GetBucket*",
+        "s3:List*",
+        "s3:DeleteObject*",
+        "s3:PutObject",
+        "s3:PutObjectLegalHold",
+        "s3:PutObjectRetention",
+        "s3:PutObjectTagging",
+        "s3:PutObjectVersionTagging",
+        "s3:Abort*"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "IngestionBucket917A3A3A",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "IngestionBucket917A3A3A",
+             "Arn"
+            ]
+           },
+           "/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": "states:StartExecution",
+       "Effect": "Allow",
+       "Resource": {
+        "Ref": "InvoiceAuditStateMachine780A2967"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "IngestionLambdaServiceRoleDefaultPolicy86B4BC08",
+    "Roles": [
+     {
+      "Ref": "IngestionLambdaServiceRole18B9A982"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/IngestionLambdaServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "IngestionLambdaEF25F265": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+     },
+     "S3Key": "47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c.zip"
+    },
+    "Environment": {
+     "Variables": {
+      "BUCKET_NAME": {
+       "Ref": "IngestionBucket917A3A3A"
+      },
+      "STATE_MACHINE_ARN": {
+       "Ref": "InvoiceAuditStateMachine780A2967"
+      }
+     }
+    },
+    "Handler": "ingestion_lambda.lambda_handler",
+    "MemorySize": 512,
+    "Role": {
+     "Fn::GetAtt": [
+      "IngestionLambdaServiceRole18B9A982",
+      "Arn"
+     ]
+    },
+    "Runtime": "python3.11",
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ],
+    "Timeout": 300
+   },
+   "DependsOn": [
+    "IngestionLambdaServiceRoleDefaultPolicy86B4BC08",
+    "IngestionLambdaServiceRole18B9A982"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/IngestionLambda/Resource",
+    "aws:asset:path": "asset.47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c",
+    "aws:asset:is-bundled": true,
+    "aws:asset:property": "Code"
+   }
+  },
+  "ExtractionLambdaServiceRoleDA15206A": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ],
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/ExtractionLambdaServiceRole/Resource"
+   }
+  },
+  "ExtractionLambdaServiceRoleDefaultPolicyE32A0518": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "s3:GetObject",
+        "s3:ListBucket"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "IngestionBucket917A3A3A",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "IngestionBucket917A3A3A",
+             "Arn"
+            ]
+           },
+           "/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": [
+        "textract:StartDocumentTextDetection",
+        "textract:GetDocumentTextDetection"
+       ],
+       "Effect": "Allow",
+       "Resource": "*"
+      },
+      {
+       "Action": [
+        "s3:GetObject*",
+        "s3:GetBucket*",
+        "s3:List*"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "IngestionBucket917A3A3A",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "IngestionBucket917A3A3A",
+             "Arn"
+            ]
+           },
+           "/*"
+          ]
+         ]
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "ExtractionLambdaServiceRoleDefaultPolicyE32A0518",
+    "Roles": [
+     {
+      "Ref": "ExtractionLambdaServiceRoleDA15206A"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/ExtractionLambdaServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "ExtractionLambdaD112EB16": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+     },
+     "S3Key": "47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c.zip"
+    },
+    "Environment": {
+     "Variables": {
+      "BUCKET_NAME": {
+       "Ref": "IngestionBucket917A3A3A"
+      }
+     }
+    },
+    "Handler": "extraction_lambda.lambda_handler",
+    "MemorySize": 512,
+    "Role": {
+     "Fn::GetAtt": [
+      "ExtractionLambdaServiceRoleDA15206A",
+      "Arn"
+     ]
+    },
+    "Runtime": "python3.11",
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ],
+    "Timeout": 600
+   },
+   "DependsOn": [
+    "ExtractionLambdaServiceRoleDefaultPolicyE32A0518",
+    "ExtractionLambdaServiceRoleDA15206A"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/ExtractionLambda/Resource",
+    "aws:asset:path": "asset.47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c",
+    "aws:asset:is-bundled": true,
+    "aws:asset:property": "Code"
+   }
+  },
+  "ReconciliationLambdaServiceRole063CCE63": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ],
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/ReconciliationLambdaServiceRole/Resource"
+   }
+  },
+  "ReconciliationLambdaServiceRoleDefaultPolicy77411DEC": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:Query"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "MsaRatesTable67DF6646",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator",
+        "dynamodb:Query",
+        "dynamodb:GetItem",
+        "dynamodb:Scan",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:DescribeTable"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "MsaRatesTable67DF6646",
+          "Arn"
+         ]
+        },
+        {
+         "Ref": "AWS::NoValue"
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "ReconciliationLambdaServiceRoleDefaultPolicy77411DEC",
+    "Roles": [
+     {
+      "Ref": "ReconciliationLambdaServiceRole063CCE63"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/ReconciliationLambdaServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "ReconciliationLambda48A3990B": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+     },
+     "S3Key": "47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c.zip"
+    },
+    "Environment": {
+     "Variables": {
+      "MSA_RATES_TABLE_NAME": {
+       "Ref": "MsaRatesTable67DF6646"
+      }
+     }
+    },
+    "Handler": "comparison_lambda.lambda_handler",
+    "MemorySize": 512,
+    "Role": {
+     "Fn::GetAtt": [
+      "ReconciliationLambdaServiceRole063CCE63",
+      "Arn"
+     ]
+    },
+    "Runtime": "python3.11",
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ],
+    "Timeout": 300
+   },
+   "DependsOn": [
+    "ReconciliationLambdaServiceRoleDefaultPolicy77411DEC",
+    "ReconciliationLambdaServiceRole063CCE63"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/ReconciliationLambda/Resource",
+    "aws:asset:path": "asset.47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c",
+    "aws:asset:is-bundled": true,
+    "aws:asset:property": "Code"
+   }
+  },
+  "ReportLambdaServiceRoleD526F028": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ],
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/ReportLambdaServiceRole/Resource"
+   }
+  },
+  "ReportLambdaServiceRoleDefaultPolicyBC194FE2": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:ListBucket"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "ReportsBucket4E7C5994",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "ReportsBucket4E7C5994",
+             "Arn"
+            ]
+           },
+           "/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": [
+        "s3:GetObject*",
+        "s3:GetBucket*",
+        "s3:List*",
+        "s3:DeleteObject*",
+        "s3:PutObject",
+        "s3:PutObjectLegalHold",
+        "s3:PutObjectRetention",
+        "s3:PutObjectTagging",
+        "s3:PutObjectVersionTagging",
+        "s3:Abort*"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "ReportsBucket4E7C5994",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "ReportsBucket4E7C5994",
+             "Arn"
+            ]
+           },
+           "/*"
+          ]
+         ]
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "ReportLambdaServiceRoleDefaultPolicyBC194FE2",
+    "Roles": [
+     {
+      "Ref": "ReportLambdaServiceRoleD526F028"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/ReportLambdaServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "ReportLambda9FE277D8": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+     },
+     "S3Key": "47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c.zip"
+    },
+    "Environment": {
+     "Variables": {
+      "REPORTS_BUCKET_NAME": {
+       "Ref": "ReportsBucket4E7C5994"
+      }
+     }
+    },
+    "Handler": "report_lambda.lambda_handler",
+    "MemorySize": 512,
+    "Role": {
+     "Fn::GetAtt": [
+      "ReportLambdaServiceRoleD526F028",
+      "Arn"
+     ]
+    },
+    "Runtime": "python3.11",
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ],
+    "Timeout": 600
+   },
+   "DependsOn": [
+    "ReportLambdaServiceRoleDefaultPolicyBC194FE2",
+    "ReportLambdaServiceRoleD526F028"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/ReportLambda/Resource",
+    "aws:asset:path": "asset.47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c",
+    "aws:asset:is-bundled": true,
+    "aws:asset:property": "Code"
+   }
+  },
+  "InvoiceWorkflowRole8F28595C": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": {
+         "Fn::FindInMap": [
+          "ServiceprincipalMap",
+          {
+           "Ref": "AWS::Region"
+          },
+          "states"
+         ]
+        }
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/InvoiceWorkflowRole/Resource"
+   }
+  },
+  "InvoiceWorkflowRoleDefaultPolicy8AEA2F68": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "lambda:InvokeFunction",
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "IngestionLambdaEF25F265",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "IngestionLambdaEF25F265",
+             "Arn"
+            ]
+           },
+           ":*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": "lambda:InvokeFunction",
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "ExtractionLambdaD112EB16",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "ExtractionLambdaD112EB16",
+             "Arn"
+            ]
+           },
+           ":*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": "lambda:InvokeFunction",
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "ReconciliationLambda48A3990B",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "ReconciliationLambda48A3990B",
+             "Arn"
+            ]
+           },
+           ":*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": "lambda:InvokeFunction",
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "ReportLambda9FE277D8",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "ReportLambda9FE277D8",
+             "Arn"
+            ]
+           },
+           ":*"
+          ]
+         ]
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "InvoiceWorkflowRoleDefaultPolicy8AEA2F68",
+    "Roles": [
+     {
+      "Ref": "InvoiceWorkflowRole8F28595C"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/InvoiceWorkflowRole/DefaultPolicy/Resource"
+   }
+  },
+  "InvoiceAuditStateMachine780A2967": {
+   "Type": "AWS::StepFunctions::StateMachine",
+   "Properties": {
+    "DefinitionString": {
+     "Fn::Join": [
+      "",
+      [
+       "{\"StartAt\":\"IngestInvoice\",\"States\":{\"IngestInvoice\":{\"Next\":\"ExtractInvoiceData\",\"Retry\":[{\"ErrorEquals\":[\"Lambda.ClientExecutionTimeoutException\",\"Lambda.ServiceException\",\"Lambda.AWSLambdaException\",\"Lambda.SdkClientException\"],\"IntervalSeconds\":2,\"MaxAttempts\":6,\"BackoffRate\":2}],\"Type\":\"Task\",\"ResultPath\":\"$.ingestion\",\"Resource\":\"arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":states:::lambda:invoke\",\"Parameters\":{\"FunctionName\":\"",
+       {
+        "Fn::GetAtt": [
+         "IngestionLambdaEF25F265",
+         "Arn"
+        ]
+       },
+       "\",\"Payload.$\":\"$\"}},\"ExtractInvoiceData\":{\"Next\":\"ReconcileAgainstMsaRates\",\"Retry\":[{\"ErrorEquals\":[\"Lambda.ClientExecutionTimeoutException\",\"Lambda.ServiceException\",\"Lambda.AWSLambdaException\",\"Lambda.SdkClientException\"],\"IntervalSeconds\":2,\"MaxAttempts\":6,\"BackoffRate\":2}],\"Type\":\"Task\",\"ResultPath\":\"$.extraction\",\"Resource\":\"arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":states:::lambda:invoke\",\"Parameters\":{\"FunctionName\":\"",
+       {
+        "Fn::GetAtt": [
+         "ExtractionLambdaD112EB16",
+         "Arn"
+        ]
+       },
+       "\",\"Payload\":{\"ingestion.$\":\"$.ingestion\"}}},\"ReconcileAgainstMsaRates\":{\"Next\":\"DiscrepanciesPresent\",\"Retry\":[{\"ErrorEquals\":[\"Lambda.ClientExecutionTimeoutException\",\"Lambda.ServiceException\",\"Lambda.AWSLambdaException\",\"Lambda.SdkClientException\"],\"IntervalSeconds\":2,\"MaxAttempts\":6,\"BackoffRate\":2}],\"Type\":\"Task\",\"ResultPath\":\"$.reconciliation\",\"Resource\":\"arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":states:::lambda:invoke\",\"Parameters\":{\"FunctionName\":\"",
+       {
+        "Fn::GetAtt": [
+         "ReconciliationLambda48A3990B",
+         "Arn"
+        ]
+       },
+       "\",\"Payload\":{\"ingestion.$\":\"$.ingestion\",\"extraction.$\":\"$.extraction\"}}},\"DiscrepanciesPresent\":{\"Type\":\"Choice\",\"Choices\":[{\"Variable\":\"$.reconciliation.Payload.discrepancies.total\",\"NumericGreaterThan\":0,\"Next\":\"AwaitHumanReview\"}],\"Default\":\"GenerateAuditReport\"},\"GenerateAuditReport\":{\"End\":true,\"Retry\":[{\"ErrorEquals\":[\"Lambda.ClientExecutionTimeoutException\",\"Lambda.ServiceException\",\"Lambda.AWSLambdaException\",\"Lambda.SdkClientException\"],\"IntervalSeconds\":2,\"MaxAttempts\":6,\"BackoffRate\":2}],\"Type\":\"Task\",\"ResultPath\":\"$.report\",\"Resource\":\"arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":states:::lambda:invoke\",\"Parameters\":{\"FunctionName\":\"",
+       {
+        "Fn::GetAtt": [
+         "ReportLambda9FE277D8",
+         "Arn"
+        ]
+       },
+       "\",\"Payload\":{\"ingestion.$\":\"$.ingestion\",\"extraction.$\":\"$.extraction\",\"reconciliation.$\":\"$.reconciliation\"}}},\"AwaitHumanReview\":{\"Next\":\"GenerateAuditReport\",\"Retry\":[{\"ErrorEquals\":[\"Lambda.ClientExecutionTimeoutException\",\"Lambda.ServiceException\",\"Lambda.AWSLambdaException\",\"Lambda.SdkClientException\"],\"IntervalSeconds\":2,\"MaxAttempts\":6,\"BackoffRate\":2}],\"Type\":\"Task\",\"ResultPath\":\"$.humanReview\",\"Resource\":\"arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":states:::lambda:invoke.waitForTaskToken\",\"Parameters\":{\"FunctionName\":\"",
+       {
+        "Fn::GetAtt": [
+         "ReconciliationLambda48A3990B",
+         "Arn"
+        ]
+       },
+       "\",\"Payload\":{\"taskToken.$\":\"$$.Task.Token\",\"discrepancies.$\":\"$.reconciliation.Payload.discrepancies\"}}}},\"TimeoutSeconds\":3600}"
+      ]
+     ]
+    },
+    "RoleArn": {
+     "Fn::GetAtt": [
+      "InvoiceWorkflowRole8F28595C",
+      "Arn"
+     ]
+    },
+    "StateMachineName": {
+     "Fn::Join": [
+      "",
+      [
+       "InvoiceAuditWorkflow-",
+       {
+        "Ref": "AWS::Region"
+       }
+      ]
+     ]
+    },
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ]
+   },
+   "DependsOn": [
+    "InvoiceWorkflowRoleDefaultPolicy8AEA2F68",
+    "InvoiceWorkflowRole8F28595C"
+   ],
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/InvoiceAuditStateMachine/Resource"
+   }
+  },
   "BucketNotificationsHandler050a0587b7544547bf325f094a3db834RoleB6FB88EC": {
    "Type": "AWS::IAM::Role",
    "Properties": {
@@ -1051,7 +1892,7 @@
   "CDKMetadata": {
    "Type": "AWS::CDK::Metadata",
    "Properties": {
-    "Analytics": "v2:deflate64:H4sIAAAAAAAA/1VQTU/EIBD9LXunY3d78Ow28WpTvTcUcB1bwDCgaUj/uxRqN57eB483DBc41zXUJ/5DlZBTNeMI8dVzMbFkDZEaiNcgJuVZ+252VqCzM4rlbu+6iCsntbKZ61FyiCnTKaeRCK1hz8EIv5Fk//GVIdcQezurzc54H1DYyqgZOJHyBE8bMLkYrq1MT37jY7mZybqyNpC3uldkgxOl8+D/jjpnv1Eqx3JlWv2G5saOsMjhwe2a4Minypfgv0L+mdYaiWWRbvEf1jw0cG7g8fRJiJULxqNW0Bf8BZ8H/R91AQAA"
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/1VQQW6DMBB8S+6LS8qh5wapUqVGRbR3ZGwn2QI2Yu1UCPnvNYaQ5jSzs6PZsZ/ZPk1ZuuO/lAjZJC3WbPqyXDQQpGqijE0HJxplIT/plS1QmBbFeJfXeRkOnJSHlne15GwKnkINHRKh0fDmtLAzCfKNe5Cj5p2R4fw3r1s1LyPxgLxjU2kWLeL99MI8UFZxImWJvc4AZFV/WrOpspwaYh+xzbu+mkY9GkLDi0GhILzcqiMXF9Tx2v/Ze8gdWdOViowbxFJn4w+rYjBXlGqA2CaknFGfYTOLaK6GdSa2+UPkp7O9i9+dGy3x9lNH3vchxEMx2ovRTxnbZ+xl90OIyeC0xU6xcsE/Zi8WbdUBAAA="
    },
    "Metadata": {
     "aws:cdk:path": "MSAInvoiceAuditFullStack/CDKMetadata/Default"
@@ -1076,6 +1917,12 @@
    "Description": "DynamoDB table for MSA rates",
    "Value": {
     "Ref": "MsaRatesTable67DF6646"
+   }
+  },
+  "StateMachineArn": {
+   "Description": "Invoice audit workflow state machine ARN",
+   "Value": {
+    "Ref": "InvoiceAuditStateMachine780A2967"
    }
   }
  },
@@ -1271,6 +2118,115 @@
      ]
     }
    ]
+  }
+ },
+ "Mappings": {
+  "ServiceprincipalMap": {
+   "af-south-1": {
+    "states": "states.af-south-1.amazonaws.com"
+   },
+   "ap-east-1": {
+    "states": "states.ap-east-1.amazonaws.com"
+   },
+   "ap-northeast-1": {
+    "states": "states.ap-northeast-1.amazonaws.com"
+   },
+   "ap-northeast-2": {
+    "states": "states.ap-northeast-2.amazonaws.com"
+   },
+   "ap-northeast-3": {
+    "states": "states.ap-northeast-3.amazonaws.com"
+   },
+   "ap-south-1": {
+    "states": "states.ap-south-1.amazonaws.com"
+   },
+   "ap-south-2": {
+    "states": "states.ap-south-2.amazonaws.com"
+   },
+   "ap-southeast-1": {
+    "states": "states.ap-southeast-1.amazonaws.com"
+   },
+   "ap-southeast-2": {
+    "states": "states.ap-southeast-2.amazonaws.com"
+   },
+   "ap-southeast-3": {
+    "states": "states.ap-southeast-3.amazonaws.com"
+   },
+   "ap-southeast-4": {
+    "states": "states.ap-southeast-4.amazonaws.com"
+   },
+   "ca-central-1": {
+    "states": "states.ca-central-1.amazonaws.com"
+   },
+   "cn-north-1": {
+    "states": "states.cn-north-1.amazonaws.com"
+   },
+   "cn-northwest-1": {
+    "states": "states.cn-northwest-1.amazonaws.com"
+   },
+   "eu-central-1": {
+    "states": "states.eu-central-1.amazonaws.com"
+   },
+   "eu-central-2": {
+    "states": "states.eu-central-2.amazonaws.com"
+   },
+   "eu-north-1": {
+    "states": "states.eu-north-1.amazonaws.com"
+   },
+   "eu-south-1": {
+    "states": "states.eu-south-1.amazonaws.com"
+   },
+   "eu-south-2": {
+    "states": "states.eu-south-2.amazonaws.com"
+   },
+   "eu-west-1": {
+    "states": "states.eu-west-1.amazonaws.com"
+   },
+   "eu-west-2": {
+    "states": "states.eu-west-2.amazonaws.com"
+   },
+   "eu-west-3": {
+    "states": "states.eu-west-3.amazonaws.com"
+   },
+   "il-central-1": {
+    "states": "states.il-central-1.amazonaws.com"
+   },
+   "me-central-1": {
+    "states": "states.me-central-1.amazonaws.com"
+   },
+   "me-south-1": {
+    "states": "states.me-south-1.amazonaws.com"
+   },
+   "sa-east-1": {
+    "states": "states.sa-east-1.amazonaws.com"
+   },
+   "us-east-1": {
+    "states": "states.us-east-1.amazonaws.com"
+   },
+   "us-east-2": {
+    "states": "states.us-east-2.amazonaws.com"
+   },
+   "us-gov-east-1": {
+    "states": "states.us-gov-east-1.amazonaws.com"
+   },
+   "us-gov-west-1": {
+    "states": "states.us-gov-west-1.amazonaws.com"
+   },
+   "us-iso-east-1": {
+    "states": "states.amazonaws.com"
+   },
+   "us-iso-west-1": {
+    "states": "states.amazonaws.com"
+   },
+   "us-isob-east-1": {
+    "states": "states.amazonaws.com"
+   },
+   "us-west-1": {
+    "states": "states.us-west-1.amazonaws.com"
+   },
+   "us-west-2": {
+    "states": "states.us-west-2.amazonaws.com"
+   }
   }
  },
  "Parameters": {

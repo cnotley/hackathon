@@ -23,7 +23,7 @@
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/0317d3875d1c74acedad9d1b5a2ac677d5cadf13b1faba77f91a1de636603918.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/f160232e30f9ca9003336d7b00d0f3031d4618e4f186676356fb0aa938708c21.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -118,24 +118,6 @@
             "data": "ReportsBucketAutoDeleteObjectsCustomResource98FB8A10"
           }
         ],
-        "/MSAInvoiceAuditFullStack/IngestionLambda/ServiceRole/Resource": [
-          {
-            "type": "aws:cdk:logicalId",
-            "data": "IngestionLambdaServiceRole447B9B96"
-          }
-        ],
-        "/MSAInvoiceAuditFullStack/IngestionLambda/ServiceRole/DefaultPolicy/Resource": [
-          {
-            "type": "aws:cdk:logicalId",
-            "data": "IngestionLambdaServiceRoleDefaultPolicyD3A17461"
-          }
-        ],
-        "/MSAInvoiceAuditFullStack/IngestionLambda/Resource": [
-          {
-            "type": "aws:cdk:logicalId",
-            "data": "IngestionLambdaEF25F265"
-          }
-        ],
         "/MSAInvoiceAuditFullStack/MsaRatesTable": [
           {
             "type": "aws:cdk:hasPhysicalName",
@@ -192,6 +174,96 @@
             "data": "SeedMsaRates"
           }
         ],
+        "/MSAInvoiceAuditFullStack/IngestionLambdaServiceRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "IngestionLambdaServiceRole18B9A982"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/IngestionLambdaServiceRole/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "IngestionLambdaServiceRoleDefaultPolicy86B4BC08"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/IngestionLambda/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "IngestionLambdaEF25F265"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/ExtractionLambdaServiceRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ExtractionLambdaServiceRoleDA15206A"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/ExtractionLambdaServiceRole/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ExtractionLambdaServiceRoleDefaultPolicyE32A0518"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/ExtractionLambda/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ExtractionLambdaD112EB16"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/ReconciliationLambdaServiceRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ReconciliationLambdaServiceRole063CCE63"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/ReconciliationLambdaServiceRole/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ReconciliationLambdaServiceRoleDefaultPolicy77411DEC"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/ReconciliationLambda/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ReconciliationLambda48A3990B"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/ReportLambdaServiceRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ReportLambdaServiceRoleD526F028"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/ReportLambdaServiceRole/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ReportLambdaServiceRoleDefaultPolicyBC194FE2"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/ReportLambda/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ReportLambda9FE277D8"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/InvoiceWorkflowRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "InvoiceWorkflowRole8F28595C"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/InvoiceWorkflowRole/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "InvoiceWorkflowRoleDefaultPolicy8AEA2F68"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/InvoiceAuditStateMachine/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "InvoiceAuditStateMachine780A2967"
+          }
+        ],
         "/MSAInvoiceAuditFullStack/BucketNotificationsHandler050a0587b7544547bf325f094a3db834/Role/Resource": [
           {
             "type": "aws:cdk:logicalId",
@@ -228,6 +300,12 @@
             "data": "MsaRatesTableName"
           }
         ],
+        "/MSAInvoiceAuditFullStack/StateMachineArn": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "StateMachineArn"
+          }
+        ],
         "/MSAInvoiceAuditFullStack/CDKMetadata/Default": [
           {
             "type": "aws:cdk:logicalId",
@@ -238,6 +316,12 @@
           {
             "type": "aws:cdk:logicalId",
             "data": "CDKMetadataAvailable"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/Service-principalMap": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ServiceprincipalMap"
           }
         ],
         "/MSAInvoiceAuditFullStack/BootstrapVersion": [

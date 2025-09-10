@@ -436,234 +436,6 @@
               "version": "2.100.0"
             }
           },
-          "IngestionLambda": {
-            "id": "IngestionLambda",
-            "path": "MSAInvoiceAuditFullStack/IngestionLambda",
-            "children": {
-              "ServiceRole": {
-                "id": "ServiceRole",
-                "path": "MSAInvoiceAuditFullStack/IngestionLambda/ServiceRole",
-                "children": {
-                  "ImportServiceRole": {
-                    "id": "ImportServiceRole",
-                    "path": "MSAInvoiceAuditFullStack/IngestionLambda/ServiceRole/ImportServiceRole",
-                    "constructInfo": {
-                      "fqn": "aws-cdk-lib.Resource",
-                      "version": "2.100.0"
-                    }
-                  },
-                  "Resource": {
-                    "id": "Resource",
-                    "path": "MSAInvoiceAuditFullStack/IngestionLambda/ServiceRole/Resource",
-                    "attributes": {
-                      "aws:cdk:cloudformation:type": "AWS::IAM::Role",
-                      "aws:cdk:cloudformation:props": {
-                        "assumeRolePolicyDocument": {
-                          "Statement": [
-                            {
-                              "Action": "sts:AssumeRole",
-                              "Effect": "Allow",
-                              "Principal": {
-                                "Service": "lambda.amazonaws.com"
-                              }
-                            }
-                          ],
-                          "Version": "2012-10-17"
-                        },
-                        "managedPolicyArns": [
-                          {
-                            "Fn::Join": [
-                              "",
-                              [
-                                "arn:",
-                                {
-                                  "Ref": "AWS::Partition"
-                                },
-                                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-                              ]
-                            ]
-                          }
-                        ],
-                        "tags": [
-                          {
-                            "key": "Environment",
-                            "value": "Prototype"
-                          },
-                          {
-                            "key": "Owner",
-                            "value": "GRT-Hackathon-Team8"
-                          },
-                          {
-                            "key": "Project",
-                            "value": "MSA-Invoice-Auditing"
-                          }
-                        ]
-                      }
-                    },
-                    "constructInfo": {
-                      "fqn": "aws-cdk-lib.aws_iam.CfnRole",
-                      "version": "2.100.0"
-                    }
-                  },
-                  "DefaultPolicy": {
-                    "id": "DefaultPolicy",
-                    "path": "MSAInvoiceAuditFullStack/IngestionLambda/ServiceRole/DefaultPolicy",
-                    "children": {
-                      "Resource": {
-                        "id": "Resource",
-                        "path": "MSAInvoiceAuditFullStack/IngestionLambda/ServiceRole/DefaultPolicy/Resource",
-                        "attributes": {
-                          "aws:cdk:cloudformation:type": "AWS::IAM::Policy",
-                          "aws:cdk:cloudformation:props": {
-                            "policyDocument": {
-                              "Statement": [
-                                {
-                                  "Action": [
-                                    "s3:GetObject*",
-                                    "s3:GetBucket*",
-                                    "s3:List*",
-                                    "s3:DeleteObject*",
-                                    "s3:PutObject",
-                                    "s3:PutObjectLegalHold",
-                                    "s3:PutObjectRetention",
-                                    "s3:PutObjectTagging",
-                                    "s3:PutObjectVersionTagging",
-                                    "s3:Abort*"
-                                  ],
-                                  "Effect": "Allow",
-                                  "Resource": [
-                                    {
-                                      "Fn::GetAtt": [
-                                        "IngestionBucket917A3A3A",
-                                        "Arn"
-                                      ]
-                                    },
-                                    {
-                                      "Fn::Join": [
-                                        "",
-                                        [
-                                          {
-                                            "Fn::GetAtt": [
-                                              "IngestionBucket917A3A3A",
-                                              "Arn"
-                                            ]
-                                          },
-                                          "/*"
-                                        ]
-                                      ]
-                                    }
-                                  ]
-                                }
-                              ],
-                              "Version": "2012-10-17"
-                            },
-                            "policyName": "IngestionLambdaServiceRoleDefaultPolicyD3A17461",
-                            "roles": [
-                              {
-                                "Ref": "IngestionLambdaServiceRole447B9B96"
-                              }
-                            ]
-                          }
-                        },
-                        "constructInfo": {
-                          "fqn": "aws-cdk-lib.aws_iam.CfnPolicy",
-                          "version": "2.100.0"
-                        }
-                      }
-                    },
-                    "constructInfo": {
-                      "fqn": "aws-cdk-lib.aws_iam.Policy",
-                      "version": "2.100.0"
-                    }
-                  }
-                },
-                "constructInfo": {
-                  "fqn": "aws-cdk-lib.aws_iam.Role",
-                  "version": "2.100.0"
-                }
-              },
-              "Code": {
-                "id": "Code",
-                "path": "MSAInvoiceAuditFullStack/IngestionLambda/Code",
-                "children": {
-                  "Stage": {
-                    "id": "Stage",
-                    "path": "MSAInvoiceAuditFullStack/IngestionLambda/Code/Stage",
-                    "constructInfo": {
-                      "fqn": "aws-cdk-lib.AssetStaging",
-                      "version": "2.100.0"
-                    }
-                  },
-                  "AssetBucket": {
-                    "id": "AssetBucket",
-                    "path": "MSAInvoiceAuditFullStack/IngestionLambda/Code/AssetBucket",
-                    "constructInfo": {
-                      "fqn": "aws-cdk-lib.aws_s3.BucketBase",
-                      "version": "2.100.0"
-                    }
-                  }
-                },
-                "constructInfo": {
-                  "fqn": "aws-cdk-lib.aws_s3_assets.Asset",
-                  "version": "2.100.0"
-                }
-              },
-              "Resource": {
-                "id": "Resource",
-                "path": "MSAInvoiceAuditFullStack/IngestionLambda/Resource",
-                "attributes": {
-                  "aws:cdk:cloudformation:type": "AWS::Lambda::Function",
-                  "aws:cdk:cloudformation:props": {
-                    "code": {
-                      "s3Bucket": {
-                        "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
-                      },
-                      "s3Key": "8f519d98e55328a0ab8baf10a6db94574428c1d726cb64fafacdfe277d1af7e8.zip"
-                    },
-                    "environment": {
-                      "variables": {
-                        "INGESTION_BUCKET_NAME": {
-                          "Ref": "IngestionBucket917A3A3A"
-                        }
-                      }
-                    },
-                    "handler": "ingestion_lambda.lambda_handler",
-                    "memorySize": 512,
-                    "role": {
-                      "Fn::GetAtt": [
-                        "IngestionLambdaServiceRole447B9B96",
-                        "Arn"
-                      ]
-                    },
-                    "runtime": "python3.11",
-                    "tags": [
-                      {
-                        "key": "Environment",
-                        "value": "Prototype"
-                      },
-                      {
-                        "key": "Owner",
-                        "value": "GRT-Hackathon-Team8"
-                      },
-                      {
-                        "key": "Project",
-                        "value": "MSA-Invoice-Auditing"
-                      }
-                    ],
-                    "timeout": 300
-                  }
-                },
-                "constructInfo": {
-                  "fqn": "aws-cdk-lib.aws_lambda.CfnFunction",
-                  "version": "2.100.0"
-                }
-              }
-            },
-            "constructInfo": {
-              "fqn": "aws-cdk-lib.aws_lambda.Function",
-              "version": "2.100.0"
-            }
-          },
           "MsaRatesTable": {
             "id": "MsaRatesTable",
             "path": "MSAInvoiceAuditFullStack/MsaRatesTable",
@@ -1193,6 +965,1386 @@
               "version": "2.100.0"
             }
           },
+          "IngestionLambdaServiceRole": {
+            "id": "IngestionLambdaServiceRole",
+            "path": "MSAInvoiceAuditFullStack/IngestionLambdaServiceRole",
+            "children": {
+              "ImportIngestionLambdaServiceRole": {
+                "id": "ImportIngestionLambdaServiceRole",
+                "path": "MSAInvoiceAuditFullStack/IngestionLambdaServiceRole/ImportIngestionLambdaServiceRole",
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.Resource",
+                  "version": "2.100.0"
+                }
+              },
+              "Resource": {
+                "id": "Resource",
+                "path": "MSAInvoiceAuditFullStack/IngestionLambdaServiceRole/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::IAM::Role",
+                  "aws:cdk:cloudformation:props": {
+                    "assumeRolePolicyDocument": {
+                      "Statement": [
+                        {
+                          "Action": "sts:AssumeRole",
+                          "Effect": "Allow",
+                          "Principal": {
+                            "Service": "lambda.amazonaws.com"
+                          }
+                        }
+                      ],
+                      "Version": "2012-10-17"
+                    },
+                    "managedPolicyArns": [
+                      {
+                        "Fn::Join": [
+                          "",
+                          [
+                            "arn:",
+                            {
+                              "Ref": "AWS::Partition"
+                            },
+                            ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+                          ]
+                        ]
+                      }
+                    ],
+                    "tags": [
+                      {
+                        "key": "Environment",
+                        "value": "Prototype"
+                      },
+                      {
+                        "key": "Owner",
+                        "value": "GRT-Hackathon-Team8"
+                      },
+                      {
+                        "key": "Project",
+                        "value": "MSA-Invoice-Auditing"
+                      }
+                    ]
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_iam.CfnRole",
+                  "version": "2.100.0"
+                }
+              },
+              "DefaultPolicy": {
+                "id": "DefaultPolicy",
+                "path": "MSAInvoiceAuditFullStack/IngestionLambdaServiceRole/DefaultPolicy",
+                "children": {
+                  "Resource": {
+                    "id": "Resource",
+                    "path": "MSAInvoiceAuditFullStack/IngestionLambdaServiceRole/DefaultPolicy/Resource",
+                    "attributes": {
+                      "aws:cdk:cloudformation:type": "AWS::IAM::Policy",
+                      "aws:cdk:cloudformation:props": {
+                        "policyDocument": {
+                          "Statement": [
+                            {
+                              "Action": [
+                                "s3:GetObject",
+                                "s3:PutObject",
+                                "s3:ListBucket"
+                              ],
+                              "Effect": "Allow",
+                              "Resource": [
+                                {
+                                  "Fn::GetAtt": [
+                                    "IngestionBucket917A3A3A",
+                                    "Arn"
+                                  ]
+                                },
+                                {
+                                  "Fn::Join": [
+                                    "",
+                                    [
+                                      {
+                                        "Fn::GetAtt": [
+                                          "IngestionBucket917A3A3A",
+                                          "Arn"
+                                        ]
+                                      },
+                                      "/*"
+                                    ]
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "Action": [
+                                "s3:GetObject*",
+                                "s3:GetBucket*",
+                                "s3:List*",
+                                "s3:DeleteObject*",
+                                "s3:PutObject",
+                                "s3:PutObjectLegalHold",
+                                "s3:PutObjectRetention",
+                                "s3:PutObjectTagging",
+                                "s3:PutObjectVersionTagging",
+                                "s3:Abort*"
+                              ],
+                              "Effect": "Allow",
+                              "Resource": [
+                                {
+                                  "Fn::GetAtt": [
+                                    "IngestionBucket917A3A3A",
+                                    "Arn"
+                                  ]
+                                },
+                                {
+                                  "Fn::Join": [
+                                    "",
+                                    [
+                                      {
+                                        "Fn::GetAtt": [
+                                          "IngestionBucket917A3A3A",
+                                          "Arn"
+                                        ]
+                                      },
+                                      "/*"
+                                    ]
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "Action": "states:StartExecution",
+                              "Effect": "Allow",
+                              "Resource": {
+                                "Ref": "InvoiceAuditStateMachine780A2967"
+                              }
+                            }
+                          ],
+                          "Version": "2012-10-17"
+                        },
+                        "policyName": "IngestionLambdaServiceRoleDefaultPolicy86B4BC08",
+                        "roles": [
+                          {
+                            "Ref": "IngestionLambdaServiceRole18B9A982"
+                          }
+                        ]
+                      }
+                    },
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.aws_iam.CfnPolicy",
+                      "version": "2.100.0"
+                    }
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_iam.Policy",
+                  "version": "2.100.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_iam.Role",
+              "version": "2.100.0"
+            }
+          },
+          "IngestionLambda": {
+            "id": "IngestionLambda",
+            "path": "MSAInvoiceAuditFullStack/IngestionLambda",
+            "children": {
+              "Code": {
+                "id": "Code",
+                "path": "MSAInvoiceAuditFullStack/IngestionLambda/Code",
+                "children": {
+                  "Stage": {
+                    "id": "Stage",
+                    "path": "MSAInvoiceAuditFullStack/IngestionLambda/Code/Stage",
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.AssetStaging",
+                      "version": "2.100.0"
+                    }
+                  },
+                  "AssetBucket": {
+                    "id": "AssetBucket",
+                    "path": "MSAInvoiceAuditFullStack/IngestionLambda/Code/AssetBucket",
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.aws_s3.BucketBase",
+                      "version": "2.100.0"
+                    }
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_s3_assets.Asset",
+                  "version": "2.100.0"
+                }
+              },
+              "Resource": {
+                "id": "Resource",
+                "path": "MSAInvoiceAuditFullStack/IngestionLambda/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::Lambda::Function",
+                  "aws:cdk:cloudformation:props": {
+                    "code": {
+                      "s3Bucket": {
+                        "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+                      },
+                      "s3Key": "47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c.zip"
+                    },
+                    "environment": {
+                      "variables": {
+                        "BUCKET_NAME": {
+                          "Ref": "IngestionBucket917A3A3A"
+                        },
+                        "STATE_MACHINE_ARN": {
+                          "Ref": "InvoiceAuditStateMachine780A2967"
+                        }
+                      }
+                    },
+                    "handler": "ingestion_lambda.lambda_handler",
+                    "memorySize": 512,
+                    "role": {
+                      "Fn::GetAtt": [
+                        "IngestionLambdaServiceRole18B9A982",
+                        "Arn"
+                      ]
+                    },
+                    "runtime": "python3.11",
+                    "tags": [
+                      {
+                        "key": "Environment",
+                        "value": "Prototype"
+                      },
+                      {
+                        "key": "Owner",
+                        "value": "GRT-Hackathon-Team8"
+                      },
+                      {
+                        "key": "Project",
+                        "value": "MSA-Invoice-Auditing"
+                      }
+                    ],
+                    "timeout": 300
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_lambda.CfnFunction",
+                  "version": "2.100.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_lambda.Function",
+              "version": "2.100.0"
+            }
+          },
+          "ExtractionLambdaServiceRole": {
+            "id": "ExtractionLambdaServiceRole",
+            "path": "MSAInvoiceAuditFullStack/ExtractionLambdaServiceRole",
+            "children": {
+              "ImportExtractionLambdaServiceRole": {
+                "id": "ImportExtractionLambdaServiceRole",
+                "path": "MSAInvoiceAuditFullStack/ExtractionLambdaServiceRole/ImportExtractionLambdaServiceRole",
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.Resource",
+                  "version": "2.100.0"
+                }
+              },
+              "Resource": {
+                "id": "Resource",
+                "path": "MSAInvoiceAuditFullStack/ExtractionLambdaServiceRole/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::IAM::Role",
+                  "aws:cdk:cloudformation:props": {
+                    "assumeRolePolicyDocument": {
+                      "Statement": [
+                        {
+                          "Action": "sts:AssumeRole",
+                          "Effect": "Allow",
+                          "Principal": {
+                            "Service": "lambda.amazonaws.com"
+                          }
+                        }
+                      ],
+                      "Version": "2012-10-17"
+                    },
+                    "managedPolicyArns": [
+                      {
+                        "Fn::Join": [
+                          "",
+                          [
+                            "arn:",
+                            {
+                              "Ref": "AWS::Partition"
+                            },
+                            ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+                          ]
+                        ]
+                      }
+                    ],
+                    "tags": [
+                      {
+                        "key": "Environment",
+                        "value": "Prototype"
+                      },
+                      {
+                        "key": "Owner",
+                        "value": "GRT-Hackathon-Team8"
+                      },
+                      {
+                        "key": "Project",
+                        "value": "MSA-Invoice-Auditing"
+                      }
+                    ]
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_iam.CfnRole",
+                  "version": "2.100.0"
+                }
+              },
+              "DefaultPolicy": {
+                "id": "DefaultPolicy",
+                "path": "MSAInvoiceAuditFullStack/ExtractionLambdaServiceRole/DefaultPolicy",
+                "children": {
+                  "Resource": {
+                    "id": "Resource",
+                    "path": "MSAInvoiceAuditFullStack/ExtractionLambdaServiceRole/DefaultPolicy/Resource",
+                    "attributes": {
+                      "aws:cdk:cloudformation:type": "AWS::IAM::Policy",
+                      "aws:cdk:cloudformation:props": {
+                        "policyDocument": {
+                          "Statement": [
+                            {
+                              "Action": [
+                                "s3:GetObject",
+                                "s3:ListBucket"
+                              ],
+                              "Effect": "Allow",
+                              "Resource": [
+                                {
+                                  "Fn::GetAtt": [
+                                    "IngestionBucket917A3A3A",
+                                    "Arn"
+                                  ]
+                                },
+                                {
+                                  "Fn::Join": [
+                                    "",
+                                    [
+                                      {
+                                        "Fn::GetAtt": [
+                                          "IngestionBucket917A3A3A",
+                                          "Arn"
+                                        ]
+                                      },
+                                      "/*"
+                                    ]
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "Action": [
+                                "textract:StartDocumentTextDetection",
+                                "textract:GetDocumentTextDetection"
+                              ],
+                              "Effect": "Allow",
+                              "Resource": "*"
+                            },
+                            {
+                              "Action": [
+                                "s3:GetObject*",
+                                "s3:GetBucket*",
+                                "s3:List*"
+                              ],
+                              "Effect": "Allow",
+                              "Resource": [
+                                {
+                                  "Fn::GetAtt": [
+                                    "IngestionBucket917A3A3A",
+                                    "Arn"
+                                  ]
+                                },
+                                {
+                                  "Fn::Join": [
+                                    "",
+                                    [
+                                      {
+                                        "Fn::GetAtt": [
+                                          "IngestionBucket917A3A3A",
+                                          "Arn"
+                                        ]
+                                      },
+                                      "/*"
+                                    ]
+                                  ]
+                                }
+                              ]
+                            }
+                          ],
+                          "Version": "2012-10-17"
+                        },
+                        "policyName": "ExtractionLambdaServiceRoleDefaultPolicyE32A0518",
+                        "roles": [
+                          {
+                            "Ref": "ExtractionLambdaServiceRoleDA15206A"
+                          }
+                        ]
+                      }
+                    },
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.aws_iam.CfnPolicy",
+                      "version": "2.100.0"
+                    }
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_iam.Policy",
+                  "version": "2.100.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_iam.Role",
+              "version": "2.100.0"
+            }
+          },
+          "ExtractionLambda": {
+            "id": "ExtractionLambda",
+            "path": "MSAInvoiceAuditFullStack/ExtractionLambda",
+            "children": {
+              "Code": {
+                "id": "Code",
+                "path": "MSAInvoiceAuditFullStack/ExtractionLambda/Code",
+                "children": {
+                  "Stage": {
+                    "id": "Stage",
+                    "path": "MSAInvoiceAuditFullStack/ExtractionLambda/Code/Stage",
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.AssetStaging",
+                      "version": "2.100.0"
+                    }
+                  },
+                  "AssetBucket": {
+                    "id": "AssetBucket",
+                    "path": "MSAInvoiceAuditFullStack/ExtractionLambda/Code/AssetBucket",
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.aws_s3.BucketBase",
+                      "version": "2.100.0"
+                    }
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_s3_assets.Asset",
+                  "version": "2.100.0"
+                }
+              },
+              "Resource": {
+                "id": "Resource",
+                "path": "MSAInvoiceAuditFullStack/ExtractionLambda/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::Lambda::Function",
+                  "aws:cdk:cloudformation:props": {
+                    "code": {
+                      "s3Bucket": {
+                        "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+                      },
+                      "s3Key": "47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c.zip"
+                    },
+                    "environment": {
+                      "variables": {
+                        "BUCKET_NAME": {
+                          "Ref": "IngestionBucket917A3A3A"
+                        }
+                      }
+                    },
+                    "handler": "extraction_lambda.lambda_handler",
+                    "memorySize": 512,
+                    "role": {
+                      "Fn::GetAtt": [
+                        "ExtractionLambdaServiceRoleDA15206A",
+                        "Arn"
+                      ]
+                    },
+                    "runtime": "python3.11",
+                    "tags": [
+                      {
+                        "key": "Environment",
+                        "value": "Prototype"
+                      },
+                      {
+                        "key": "Owner",
+                        "value": "GRT-Hackathon-Team8"
+                      },
+                      {
+                        "key": "Project",
+                        "value": "MSA-Invoice-Auditing"
+                      }
+                    ],
+                    "timeout": 600
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_lambda.CfnFunction",
+                  "version": "2.100.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_lambda.Function",
+              "version": "2.100.0"
+            }
+          },
+          "ReconciliationLambdaServiceRole": {
+            "id": "ReconciliationLambdaServiceRole",
+            "path": "MSAInvoiceAuditFullStack/ReconciliationLambdaServiceRole",
+            "children": {
+              "ImportReconciliationLambdaServiceRole": {
+                "id": "ImportReconciliationLambdaServiceRole",
+                "path": "MSAInvoiceAuditFullStack/ReconciliationLambdaServiceRole/ImportReconciliationLambdaServiceRole",
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.Resource",
+                  "version": "2.100.0"
+                }
+              },
+              "Resource": {
+                "id": "Resource",
+                "path": "MSAInvoiceAuditFullStack/ReconciliationLambdaServiceRole/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::IAM::Role",
+                  "aws:cdk:cloudformation:props": {
+                    "assumeRolePolicyDocument": {
+                      "Statement": [
+                        {
+                          "Action": "sts:AssumeRole",
+                          "Effect": "Allow",
+                          "Principal": {
+                            "Service": "lambda.amazonaws.com"
+                          }
+                        }
+                      ],
+                      "Version": "2012-10-17"
+                    },
+                    "managedPolicyArns": [
+                      {
+                        "Fn::Join": [
+                          "",
+                          [
+                            "arn:",
+                            {
+                              "Ref": "AWS::Partition"
+                            },
+                            ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+                          ]
+                        ]
+                      }
+                    ],
+                    "tags": [
+                      {
+                        "key": "Environment",
+                        "value": "Prototype"
+                      },
+                      {
+                        "key": "Owner",
+                        "value": "GRT-Hackathon-Team8"
+                      },
+                      {
+                        "key": "Project",
+                        "value": "MSA-Invoice-Auditing"
+                      }
+                    ]
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_iam.CfnRole",
+                  "version": "2.100.0"
+                }
+              },
+              "DefaultPolicy": {
+                "id": "DefaultPolicy",
+                "path": "MSAInvoiceAuditFullStack/ReconciliationLambdaServiceRole/DefaultPolicy",
+                "children": {
+                  "Resource": {
+                    "id": "Resource",
+                    "path": "MSAInvoiceAuditFullStack/ReconciliationLambdaServiceRole/DefaultPolicy/Resource",
+                    "attributes": {
+                      "aws:cdk:cloudformation:type": "AWS::IAM::Policy",
+                      "aws:cdk:cloudformation:props": {
+                        "policyDocument": {
+                          "Statement": [
+                            {
+                              "Action": [
+                                "dynamodb:GetItem",
+                                "dynamodb:Query"
+                              ],
+                              "Effect": "Allow",
+                              "Resource": {
+                                "Fn::GetAtt": [
+                                  "MsaRatesTable67DF6646",
+                                  "Arn"
+                                ]
+                              }
+                            },
+                            {
+                              "Action": [
+                                "dynamodb:BatchGetItem",
+                                "dynamodb:GetRecords",
+                                "dynamodb:GetShardIterator",
+                                "dynamodb:Query",
+                                "dynamodb:GetItem",
+                                "dynamodb:Scan",
+                                "dynamodb:ConditionCheckItem",
+                                "dynamodb:DescribeTable"
+                              ],
+                              "Effect": "Allow",
+                              "Resource": [
+                                {
+                                  "Fn::GetAtt": [
+                                    "MsaRatesTable67DF6646",
+                                    "Arn"
+                                  ]
+                                },
+                                {
+                                  "Ref": "AWS::NoValue"
+                                }
+                              ]
+                            }
+                          ],
+                          "Version": "2012-10-17"
+                        },
+                        "policyName": "ReconciliationLambdaServiceRoleDefaultPolicy77411DEC",
+                        "roles": [
+                          {
+                            "Ref": "ReconciliationLambdaServiceRole063CCE63"
+                          }
+                        ]
+                      }
+                    },
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.aws_iam.CfnPolicy",
+                      "version": "2.100.0"
+                    }
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_iam.Policy",
+                  "version": "2.100.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_iam.Role",
+              "version": "2.100.0"
+            }
+          },
+          "ReconciliationLambda": {
+            "id": "ReconciliationLambda",
+            "path": "MSAInvoiceAuditFullStack/ReconciliationLambda",
+            "children": {
+              "Code": {
+                "id": "Code",
+                "path": "MSAInvoiceAuditFullStack/ReconciliationLambda/Code",
+                "children": {
+                  "Stage": {
+                    "id": "Stage",
+                    "path": "MSAInvoiceAuditFullStack/ReconciliationLambda/Code/Stage",
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.AssetStaging",
+                      "version": "2.100.0"
+                    }
+                  },
+                  "AssetBucket": {
+                    "id": "AssetBucket",
+                    "path": "MSAInvoiceAuditFullStack/ReconciliationLambda/Code/AssetBucket",
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.aws_s3.BucketBase",
+                      "version": "2.100.0"
+                    }
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_s3_assets.Asset",
+                  "version": "2.100.0"
+                }
+              },
+              "Resource": {
+                "id": "Resource",
+                "path": "MSAInvoiceAuditFullStack/ReconciliationLambda/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::Lambda::Function",
+                  "aws:cdk:cloudformation:props": {
+                    "code": {
+                      "s3Bucket": {
+                        "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+                      },
+                      "s3Key": "47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c.zip"
+                    },
+                    "environment": {
+                      "variables": {
+                        "MSA_RATES_TABLE_NAME": {
+                          "Ref": "MsaRatesTable67DF6646"
+                        }
+                      }
+                    },
+                    "handler": "comparison_lambda.lambda_handler",
+                    "memorySize": 512,
+                    "role": {
+                      "Fn::GetAtt": [
+                        "ReconciliationLambdaServiceRole063CCE63",
+                        "Arn"
+                      ]
+                    },
+                    "runtime": "python3.11",
+                    "tags": [
+                      {
+                        "key": "Environment",
+                        "value": "Prototype"
+                      },
+                      {
+                        "key": "Owner",
+                        "value": "GRT-Hackathon-Team8"
+                      },
+                      {
+                        "key": "Project",
+                        "value": "MSA-Invoice-Auditing"
+                      }
+                    ],
+                    "timeout": 300
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_lambda.CfnFunction",
+                  "version": "2.100.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_lambda.Function",
+              "version": "2.100.0"
+            }
+          },
+          "ReportLambdaServiceRole": {
+            "id": "ReportLambdaServiceRole",
+            "path": "MSAInvoiceAuditFullStack/ReportLambdaServiceRole",
+            "children": {
+              "ImportReportLambdaServiceRole": {
+                "id": "ImportReportLambdaServiceRole",
+                "path": "MSAInvoiceAuditFullStack/ReportLambdaServiceRole/ImportReportLambdaServiceRole",
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.Resource",
+                  "version": "2.100.0"
+                }
+              },
+              "Resource": {
+                "id": "Resource",
+                "path": "MSAInvoiceAuditFullStack/ReportLambdaServiceRole/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::IAM::Role",
+                  "aws:cdk:cloudformation:props": {
+                    "assumeRolePolicyDocument": {
+                      "Statement": [
+                        {
+                          "Action": "sts:AssumeRole",
+                          "Effect": "Allow",
+                          "Principal": {
+                            "Service": "lambda.amazonaws.com"
+                          }
+                        }
+                      ],
+                      "Version": "2012-10-17"
+                    },
+                    "managedPolicyArns": [
+                      {
+                        "Fn::Join": [
+                          "",
+                          [
+                            "arn:",
+                            {
+                              "Ref": "AWS::Partition"
+                            },
+                            ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+                          ]
+                        ]
+                      }
+                    ],
+                    "tags": [
+                      {
+                        "key": "Environment",
+                        "value": "Prototype"
+                      },
+                      {
+                        "key": "Owner",
+                        "value": "GRT-Hackathon-Team8"
+                      },
+                      {
+                        "key": "Project",
+                        "value": "MSA-Invoice-Auditing"
+                      }
+                    ]
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_iam.CfnRole",
+                  "version": "2.100.0"
+                }
+              },
+              "DefaultPolicy": {
+                "id": "DefaultPolicy",
+                "path": "MSAInvoiceAuditFullStack/ReportLambdaServiceRole/DefaultPolicy",
+                "children": {
+                  "Resource": {
+                    "id": "Resource",
+                    "path": "MSAInvoiceAuditFullStack/ReportLambdaServiceRole/DefaultPolicy/Resource",
+                    "attributes": {
+                      "aws:cdk:cloudformation:type": "AWS::IAM::Policy",
+                      "aws:cdk:cloudformation:props": {
+                        "policyDocument": {
+                          "Statement": [
+                            {
+                              "Action": [
+                                "s3:PutObject",
+                                "s3:GetObject",
+                                "s3:ListBucket"
+                              ],
+                              "Effect": "Allow",
+                              "Resource": [
+                                {
+                                  "Fn::GetAtt": [
+                                    "ReportsBucket4E7C5994",
+                                    "Arn"
+                                  ]
+                                },
+                                {
+                                  "Fn::Join": [
+                                    "",
+                                    [
+                                      {
+                                        "Fn::GetAtt": [
+                                          "ReportsBucket4E7C5994",
+                                          "Arn"
+                                        ]
+                                      },
+                                      "/*"
+                                    ]
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "Action": [
+                                "s3:GetObject*",
+                                "s3:GetBucket*",
+                                "s3:List*",
+                                "s3:DeleteObject*",
+                                "s3:PutObject",
+                                "s3:PutObjectLegalHold",
+                                "s3:PutObjectRetention",
+                                "s3:PutObjectTagging",
+                                "s3:PutObjectVersionTagging",
+                                "s3:Abort*"
+                              ],
+                              "Effect": "Allow",
+                              "Resource": [
+                                {
+                                  "Fn::GetAtt": [
+                                    "ReportsBucket4E7C5994",
+                                    "Arn"
+                                  ]
+                                },
+                                {
+                                  "Fn::Join": [
+                                    "",
+                                    [
+                                      {
+                                        "Fn::GetAtt": [
+                                          "ReportsBucket4E7C5994",
+                                          "Arn"
+                                        ]
+                                      },
+                                      "/*"
+                                    ]
+                                  ]
+                                }
+                              ]
+                            }
+                          ],
+                          "Version": "2012-10-17"
+                        },
+                        "policyName": "ReportLambdaServiceRoleDefaultPolicyBC194FE2",
+                        "roles": [
+                          {
+                            "Ref": "ReportLambdaServiceRoleD526F028"
+                          }
+                        ]
+                      }
+                    },
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.aws_iam.CfnPolicy",
+                      "version": "2.100.0"
+                    }
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_iam.Policy",
+                  "version": "2.100.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_iam.Role",
+              "version": "2.100.0"
+            }
+          },
+          "ReportLambda": {
+            "id": "ReportLambda",
+            "path": "MSAInvoiceAuditFullStack/ReportLambda",
+            "children": {
+              "Code": {
+                "id": "Code",
+                "path": "MSAInvoiceAuditFullStack/ReportLambda/Code",
+                "children": {
+                  "Stage": {
+                    "id": "Stage",
+                    "path": "MSAInvoiceAuditFullStack/ReportLambda/Code/Stage",
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.AssetStaging",
+                      "version": "2.100.0"
+                    }
+                  },
+                  "AssetBucket": {
+                    "id": "AssetBucket",
+                    "path": "MSAInvoiceAuditFullStack/ReportLambda/Code/AssetBucket",
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.aws_s3.BucketBase",
+                      "version": "2.100.0"
+                    }
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_s3_assets.Asset",
+                  "version": "2.100.0"
+                }
+              },
+              "Resource": {
+                "id": "Resource",
+                "path": "MSAInvoiceAuditFullStack/ReportLambda/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::Lambda::Function",
+                  "aws:cdk:cloudformation:props": {
+                    "code": {
+                      "s3Bucket": {
+                        "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+                      },
+                      "s3Key": "47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c.zip"
+                    },
+                    "environment": {
+                      "variables": {
+                        "REPORTS_BUCKET_NAME": {
+                          "Ref": "ReportsBucket4E7C5994"
+                        }
+                      }
+                    },
+                    "handler": "report_lambda.lambda_handler",
+                    "memorySize": 512,
+                    "role": {
+                      "Fn::GetAtt": [
+                        "ReportLambdaServiceRoleD526F028",
+                        "Arn"
+                      ]
+                    },
+                    "runtime": "python3.11",
+                    "tags": [
+                      {
+                        "key": "Environment",
+                        "value": "Prototype"
+                      },
+                      {
+                        "key": "Owner",
+                        "value": "GRT-Hackathon-Team8"
+                      },
+                      {
+                        "key": "Project",
+                        "value": "MSA-Invoice-Auditing"
+                      }
+                    ],
+                    "timeout": 600
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_lambda.CfnFunction",
+                  "version": "2.100.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_lambda.Function",
+              "version": "2.100.0"
+            }
+          },
+          "InvoiceWorkflowRole": {
+            "id": "InvoiceWorkflowRole",
+            "path": "MSAInvoiceAuditFullStack/InvoiceWorkflowRole",
+            "children": {
+              "ImportInvoiceWorkflowRole": {
+                "id": "ImportInvoiceWorkflowRole",
+                "path": "MSAInvoiceAuditFullStack/InvoiceWorkflowRole/ImportInvoiceWorkflowRole",
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.Resource",
+                  "version": "2.100.0"
+                }
+              },
+              "Resource": {
+                "id": "Resource",
+                "path": "MSAInvoiceAuditFullStack/InvoiceWorkflowRole/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::IAM::Role",
+                  "aws:cdk:cloudformation:props": {
+                    "assumeRolePolicyDocument": {
+                      "Statement": [
+                        {
+                          "Action": "sts:AssumeRole",
+                          "Effect": "Allow",
+                          "Principal": {
+                            "Service": {
+                              "Fn::FindInMap": [
+                                "ServiceprincipalMap",
+                                {
+                                  "Ref": "AWS::Region"
+                                },
+                                "states"
+                              ]
+                            }
+                          }
+                        }
+                      ],
+                      "Version": "2012-10-17"
+                    },
+                    "tags": [
+                      {
+                        "key": "Environment",
+                        "value": "Prototype"
+                      },
+                      {
+                        "key": "Owner",
+                        "value": "GRT-Hackathon-Team8"
+                      },
+                      {
+                        "key": "Project",
+                        "value": "MSA-Invoice-Auditing"
+                      }
+                    ]
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_iam.CfnRole",
+                  "version": "2.100.0"
+                }
+              },
+              "DefaultPolicy": {
+                "id": "DefaultPolicy",
+                "path": "MSAInvoiceAuditFullStack/InvoiceWorkflowRole/DefaultPolicy",
+                "children": {
+                  "Resource": {
+                    "id": "Resource",
+                    "path": "MSAInvoiceAuditFullStack/InvoiceWorkflowRole/DefaultPolicy/Resource",
+                    "attributes": {
+                      "aws:cdk:cloudformation:type": "AWS::IAM::Policy",
+                      "aws:cdk:cloudformation:props": {
+                        "policyDocument": {
+                          "Statement": [
+                            {
+                              "Action": "lambda:InvokeFunction",
+                              "Effect": "Allow",
+                              "Resource": [
+                                {
+                                  "Fn::GetAtt": [
+                                    "IngestionLambdaEF25F265",
+                                    "Arn"
+                                  ]
+                                },
+                                {
+                                  "Fn::Join": [
+                                    "",
+                                    [
+                                      {
+                                        "Fn::GetAtt": [
+                                          "IngestionLambdaEF25F265",
+                                          "Arn"
+                                        ]
+                                      },
+                                      ":*"
+                                    ]
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "Action": "lambda:InvokeFunction",
+                              "Effect": "Allow",
+                              "Resource": [
+                                {
+                                  "Fn::GetAtt": [
+                                    "ExtractionLambdaD112EB16",
+                                    "Arn"
+                                  ]
+                                },
+                                {
+                                  "Fn::Join": [
+                                    "",
+                                    [
+                                      {
+                                        "Fn::GetAtt": [
+                                          "ExtractionLambdaD112EB16",
+                                          "Arn"
+                                        ]
+                                      },
+                                      ":*"
+                                    ]
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "Action": "lambda:InvokeFunction",
+                              "Effect": "Allow",
+                              "Resource": [
+                                {
+                                  "Fn::GetAtt": [
+                                    "ReconciliationLambda48A3990B",
+                                    "Arn"
+                                  ]
+                                },
+                                {
+                                  "Fn::Join": [
+                                    "",
+                                    [
+                                      {
+                                        "Fn::GetAtt": [
+                                          "ReconciliationLambda48A3990B",
+                                          "Arn"
+                                        ]
+                                      },
+                                      ":*"
+                                    ]
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "Action": "lambda:InvokeFunction",
+                              "Effect": "Allow",
+                              "Resource": [
+                                {
+                                  "Fn::GetAtt": [
+                                    "ReportLambda9FE277D8",
+                                    "Arn"
+                                  ]
+                                },
+                                {
+                                  "Fn::Join": [
+                                    "",
+                                    [
+                                      {
+                                        "Fn::GetAtt": [
+                                          "ReportLambda9FE277D8",
+                                          "Arn"
+                                        ]
+                                      },
+                                      ":*"
+                                    ]
+                                  ]
+                                }
+                              ]
+                            }
+                          ],
+                          "Version": "2012-10-17"
+                        },
+                        "policyName": "InvoiceWorkflowRoleDefaultPolicy8AEA2F68",
+                        "roles": [
+                          {
+                            "Ref": "InvoiceWorkflowRole8F28595C"
+                          }
+                        ]
+                      }
+                    },
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.aws_iam.CfnPolicy",
+                      "version": "2.100.0"
+                    }
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_iam.Policy",
+                  "version": "2.100.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_iam.Role",
+              "version": "2.100.0"
+            }
+          },
+          "IngestInvoice": {
+            "id": "IngestInvoice",
+            "path": "MSAInvoiceAuditFullStack/IngestInvoice",
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_stepfunctions_tasks.LambdaInvoke",
+              "version": "2.100.0"
+            }
+          },
+          "ExtractInvoiceData": {
+            "id": "ExtractInvoiceData",
+            "path": "MSAInvoiceAuditFullStack/ExtractInvoiceData",
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_stepfunctions_tasks.LambdaInvoke",
+              "version": "2.100.0"
+            }
+          },
+          "ReconcileAgainstMsaRates": {
+            "id": "ReconcileAgainstMsaRates",
+            "path": "MSAInvoiceAuditFullStack/ReconcileAgainstMsaRates",
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_stepfunctions_tasks.LambdaInvoke",
+              "version": "2.100.0"
+            }
+          },
+          "GenerateAuditReport": {
+            "id": "GenerateAuditReport",
+            "path": "MSAInvoiceAuditFullStack/GenerateAuditReport",
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_stepfunctions_tasks.LambdaInvoke",
+              "version": "2.100.0"
+            }
+          },
+          "AwaitHumanReview": {
+            "id": "AwaitHumanReview",
+            "path": "MSAInvoiceAuditFullStack/AwaitHumanReview",
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_stepfunctions_tasks.LambdaInvoke",
+              "version": "2.100.0"
+            }
+          },
+          "DiscrepanciesPresent": {
+            "id": "DiscrepanciesPresent",
+            "path": "MSAInvoiceAuditFullStack/DiscrepanciesPresent",
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_stepfunctions.Choice",
+              "version": "2.100.0"
+            }
+          },
+          "InvoiceAuditStateMachine": {
+            "id": "InvoiceAuditStateMachine",
+            "path": "MSAInvoiceAuditFullStack/InvoiceAuditStateMachine",
+            "children": {
+              "Resource": {
+                "id": "Resource",
+                "path": "MSAInvoiceAuditFullStack/InvoiceAuditStateMachine/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::StepFunctions::StateMachine",
+                  "aws:cdk:cloudformation:props": {
+                    "definitionString": {
+                      "Fn::Join": [
+                        "",
+                        [
+                          "{\"StartAt\":\"IngestInvoice\",\"States\":{\"IngestInvoice\":{\"Next\":\"ExtractInvoiceData\",\"Retry\":[{\"ErrorEquals\":[\"Lambda.ClientExecutionTimeoutException\",\"Lambda.ServiceException\",\"Lambda.AWSLambdaException\",\"Lambda.SdkClientException\"],\"IntervalSeconds\":2,\"MaxAttempts\":6,\"BackoffRate\":2}],\"Type\":\"Task\",\"ResultPath\":\"$.ingestion\",\"Resource\":\"arn:",
+                          {
+                            "Ref": "AWS::Partition"
+                          },
+                          ":states:::lambda:invoke\",\"Parameters\":{\"FunctionName\":\"",
+                          {
+                            "Fn::GetAtt": [
+                              "IngestionLambdaEF25F265",
+                              "Arn"
+                            ]
+                          },
+                          "\",\"Payload.$\":\"$\"}},\"ExtractInvoiceData\":{\"Next\":\"ReconcileAgainstMsaRates\",\"Retry\":[{\"ErrorEquals\":[\"Lambda.ClientExecutionTimeoutException\",\"Lambda.ServiceException\",\"Lambda.AWSLambdaException\",\"Lambda.SdkClientException\"],\"IntervalSeconds\":2,\"MaxAttempts\":6,\"BackoffRate\":2}],\"Type\":\"Task\",\"ResultPath\":\"$.extraction\",\"Resource\":\"arn:",
+                          {
+                            "Ref": "AWS::Partition"
+                          },
+                          ":states:::lambda:invoke\",\"Parameters\":{\"FunctionName\":\"",
+                          {
+                            "Fn::GetAtt": [
+                              "ExtractionLambdaD112EB16",
+                              "Arn"
+                            ]
+                          },
+                          "\",\"Payload\":{\"ingestion.$\":\"$.ingestion\"}}},\"ReconcileAgainstMsaRates\":{\"Next\":\"DiscrepanciesPresent\",\"Retry\":[{\"ErrorEquals\":[\"Lambda.ClientExecutionTimeoutException\",\"Lambda.ServiceException\",\"Lambda.AWSLambdaException\",\"Lambda.SdkClientException\"],\"IntervalSeconds\":2,\"MaxAttempts\":6,\"BackoffRate\":2}],\"Type\":\"Task\",\"ResultPath\":\"$.reconciliation\",\"Resource\":\"arn:",
+                          {
+                            "Ref": "AWS::Partition"
+                          },
+                          ":states:::lambda:invoke\",\"Parameters\":{\"FunctionName\":\"",
+                          {
+                            "Fn::GetAtt": [
+                              "ReconciliationLambda48A3990B",
+                              "Arn"
+                            ]
+                          },
+                          "\",\"Payload\":{\"ingestion.$\":\"$.ingestion\",\"extraction.$\":\"$.extraction\"}}},\"DiscrepanciesPresent\":{\"Type\":\"Choice\",\"Choices\":[{\"Variable\":\"$.reconciliation.Payload.discrepancies.total\",\"NumericGreaterThan\":0,\"Next\":\"AwaitHumanReview\"}],\"Default\":\"GenerateAuditReport\"},\"GenerateAuditReport\":{\"End\":true,\"Retry\":[{\"ErrorEquals\":[\"Lambda.ClientExecutionTimeoutException\",\"Lambda.ServiceException\",\"Lambda.AWSLambdaException\",\"Lambda.SdkClientException\"],\"IntervalSeconds\":2,\"MaxAttempts\":6,\"BackoffRate\":2}],\"Type\":\"Task\",\"ResultPath\":\"$.report\",\"Resource\":\"arn:",
+                          {
+                            "Ref": "AWS::Partition"
+                          },
+                          ":states:::lambda:invoke\",\"Parameters\":{\"FunctionName\":\"",
+                          {
+                            "Fn::GetAtt": [
+                              "ReportLambda9FE277D8",
+                              "Arn"
+                            ]
+                          },
+                          "\",\"Payload\":{\"ingestion.$\":\"$.ingestion\",\"extraction.$\":\"$.extraction\",\"reconciliation.$\":\"$.reconciliation\"}}},\"AwaitHumanReview\":{\"Next\":\"GenerateAuditReport\",\"Retry\":[{\"ErrorEquals\":[\"Lambda.ClientExecutionTimeoutException\",\"Lambda.ServiceException\",\"Lambda.AWSLambdaException\",\"Lambda.SdkClientException\"],\"IntervalSeconds\":2,\"MaxAttempts\":6,\"BackoffRate\":2}],\"Type\":\"Task\",\"ResultPath\":\"$.humanReview\",\"Resource\":\"arn:",
+                          {
+                            "Ref": "AWS::Partition"
+                          },
+                          ":states:::lambda:invoke.waitForTaskToken\",\"Parameters\":{\"FunctionName\":\"",
+                          {
+                            "Fn::GetAtt": [
+                              "ReconciliationLambda48A3990B",
+                              "Arn"
+                            ]
+                          },
+                          "\",\"Payload\":{\"taskToken.$\":\"$$.Task.Token\",\"discrepancies.$\":\"$.reconciliation.Payload.discrepancies\"}}}},\"TimeoutSeconds\":3600}"
+                        ]
+                      ]
+                    },
+                    "roleArn": {
+                      "Fn::GetAtt": [
+                        "InvoiceWorkflowRole8F28595C",
+                        "Arn"
+                      ]
+                    },
+                    "stateMachineName": {
+                      "Fn::Join": [
+                        "",
+                        [
+                          "InvoiceAuditWorkflow-",
+                          {
+                            "Ref": "AWS::Region"
+                          }
+                        ]
+                      ]
+                    },
+                    "tags": [
+                      {
+                        "key": "Environment",
+                        "value": "Prototype"
+                      },
+                      {
+                        "key": "Owner",
+                        "value": "GRT-Hackathon-Team8"
+                      },
+                      {
+                        "key": "Project",
+                        "value": "MSA-Invoice-Auditing"
+                      }
+                    ]
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_stepfunctions.CfnStateMachine",
+                  "version": "2.100.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_stepfunctions.StateMachine",
+              "version": "2.100.0"
+            }
+          },
           "BucketNotificationsHandler050a0587b7544547bf325f094a3db834": {
             "id": "BucketNotificationsHandler050a0587b7544547bf325f094a3db834",
             "path": "MSAInvoiceAuditFullStack/BucketNotificationsHandler050a0587b7544547bf325f094a3db834",
@@ -1345,6 +2497,14 @@
               "version": "2.100.0"
             }
           },
+          "StateMachineArn": {
+            "id": "StateMachineArn",
+            "path": "MSAInvoiceAuditFullStack/StateMachineArn",
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.CfnOutput",
+              "version": "2.100.0"
+            }
+          },
           "CDKMetadata": {
             "id": "CDKMetadata",
             "path": "MSAInvoiceAuditFullStack/CDKMetadata",
@@ -1369,6 +2529,14 @@
             "constructInfo": {
               "fqn": "constructs.Construct",
               "version": "10.4.2"
+            }
+          },
+          "Service-principalMap": {
+            "id": "Service-principalMap",
+            "path": "MSAInvoiceAuditFullStack/Service-principalMap",
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.CfnMapping",
+              "version": "2.100.0"
             }
           },
           "BootstrapVersion": {
