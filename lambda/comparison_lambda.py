@@ -10,9 +10,9 @@ import json
 import logging
 import os
 import uuid
-import boto3
-import pandas as pd
-import numpy as np
+import boto3  # type: ignore
+import pandas as pd  # type: ignore
+import numpy as np  # type: ignore
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 import uuid
@@ -20,7 +20,7 @@ from decimal import Decimal
 import re
 import copy
 import time
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError  # type: ignore
 
 # Configure logging
 logger = logging.getLogger()
@@ -303,191 +303,195 @@ class AnomalyDetector:
         self.endpoint_name = SAGEMAKER_ENDPOINT
     
     def detect_anomalies(self, extracted_data: Dict) -> List[Dict[str, Any]]:
-        """Detect anomalies in extracted data using SageMaker with proper error handling."""
+        """Detect anomalies in extracted data using SageMaker with labor-specific features."""
         try:
-            # Prepare data for anomaly detection
-            features = self._extract_features(extracted_data)
-            
-            if not features:
-                logger.info("No features extracted for anomaly detection")
+            labor_df = self._prepare_labor_dataframe(extracted_data)
+            if labor_df.empty:
+                logger.info("No labor data available for anomaly detection")
                 return []
-            
-            # Call SageMaker endpoint with retry logic
+
+            features = labor_df[['total_hours', 'ot_hours', 'unit_price', 'total_cost']].values.astype(float)
+            features = self._scale_features(features)
+
             max_retries = SAGEMAKER_MAX_RETRIES
             retry_delay = SAGEMAKER_RETRY_DELAY
-            
+
             for attempt in range(max_retries):
                 try:
                     response = sagemaker_client.invoke_endpoint(
                         EndpointName=self.endpoint_name,
                         ContentType='application/json',
-                        Body=json.dumps({'instances': features})
+                        Body=json.dumps({'instances': features.tolist()})
                     )
-                    
-                    # Parse response
                     result = json.loads(response['Body'].read().decode())
-                    anomalies = self._process_anomaly_results(result, extracted_data)
-                    
-                    logger.info(f"SageMaker anomaly detection completed successfully: {len(anomalies)} anomalies found")
-                    # S3 inference logging (anonymized)
+                    anomalies = self._process_anomaly_results(result, labor_df)
+
+                    # Append rule-based anomalies for overtime/cost thresholds
+                    anomalies.extend(self._rule_based_anomalies(labor_df))
+
+                    logger.info(f"SageMaker anomaly detection completed: {len(anomalies)} anomalies")
                     try:
                         s3_client.put_object(
                             Bucket=BUCKET_NAME,
                             Key=f"anomalies/{uuid.uuid4()}.json",
-                            Body=json.dumps({'features': features, 'predictions': result}, default=str),
+                            Body=json.dumps({'features': features.tolist(), 'predictions': result}, default=str),
                             ContentType='application/json'
                         )
                     except Exception as log_e:
                         logger.warning(f"Failed to log anomaly inference: {log_e}")
                     return anomalies
-                    
+
                 except ClientError as e:
                     error_code = e.response['Error']['Code']
-                    
-                    if error_code == 'ModelError':
-                        logger.error(f"SageMaker model error: {e}")
-                        # Fallback immediately on model errors
-                        return self._statistical_anomaly_detection(extracted_data)
-                    
-                    elif error_code == 'ValidationException':
-                        logger.error(f"SageMaker validation error: {e}")
-                        # Fallback immediately on validation errors
-                        return self._statistical_anomaly_detection(extracted_data)
-                    
-                    elif error_code in ['ThrottlingException', 'ServiceUnavailableException']:
-                        if attempt < max_retries - 1:
-                            logger.warning(f"SageMaker throttling/unavailable, attempt {attempt + 1}, retrying in {retry_delay}s")
-                            time.sleep(retry_delay)
-                            retry_delay *= 2  # Exponential backoff
-                            continue
-                        else:
-                            logger.error(f"SageMaker service unavailable after {max_retries} attempts")
-                            return self._statistical_anomaly_detection(extracted_data)
-                    
-                    else:
-                        logger.error(f"SageMaker client error: {e}")
-                        if attempt == max_retries - 1:
-                            return self._statistical_anomaly_detection(extracted_data)
+                    if error_code in {'ModelError', 'ValidationException'}:
+                        logger.error(f"SageMaker model/validation error: {e}")
+                        return self._statistical_anomaly_detection(labor_df)
+                    if error_code in ['ThrottlingException', 'ServiceUnavailableException'] and attempt < max_retries - 1:
+                        logger.warning(f"SageMaker throttled/unavailable (attempt {attempt + 1}), retrying in {retry_delay}s")
                         time.sleep(retry_delay)
-                        
+                        retry_delay *= 2
+                        continue
+                    logger.error(f"SageMaker client error: {e}")
+                    if attempt == max_retries - 1:
+                        return self._statistical_anomaly_detection(labor_df)
+                    time.sleep(retry_delay)
                 except Exception as e:
                     logger.error(f"Unexpected SageMaker error on attempt {attempt + 1}: {e}")
                     if attempt == max_retries - 1:
-                        return self._statistical_anomaly_detection(extracted_data)
+                        return self._statistical_anomaly_detection(labor_df)
                     time.sleep(retry_delay)
-            
-            # If we get here, all retries failed
-            logger.error("All SageMaker retry attempts failed, using statistical fallback")
-            return self._statistical_anomaly_detection(extracted_data)
-            
+
+            logger.error("All SageMaker attempts failed, using statistical fallback")
+            return self._statistical_anomaly_detection(labor_df)
+
         except Exception as e:
-            logger.error(f"Error in anomaly detection setup: {e}")
-            # Fallback to statistical anomaly detection
-            return self._statistical_anomaly_detection(extracted_data)
-    
-    def _extract_features(self, extracted_data: Dict) -> List[List[float]]:
-        """Extract numerical features for anomaly detection."""
-        features = []
-        
+            logger.error(f"Error preparing anomaly detection data: {e}")
+            return self._statistical_anomaly_detection(self._prepare_labor_dataframe(extracted_data, safe_mode=True))
+
+    def _prepare_labor_dataframe(self, extracted_data: Dict, safe_mode: bool = False) -> pd.DataFrame:
         if extracted_data.get('normalized_data', {}).get('materials'):
             raise ValidationError("Materials handling removed")
-        
-        # Extract labor features
-        labor_data = extracted_data.get('normalized_data', {}).get('labor', [])
-        for labor in labor_data:
-            feature_vector = [
-                float(labor.get('unit_price', 0)),
-                float(labor.get('total_hours', 0)),
-                float(labor.get('total_cost', 0)),
-                len(labor.get('name', '')),
-                hash(labor.get('type', 'RS')) % 1000
-            ]
-            features.append(feature_vector)
-        
-        return features
-    
-    def _process_anomaly_results(self, sagemaker_result: Dict, extracted_data: Dict) -> List[Dict[str, Any]]:
-        """Process SageMaker anomaly detection results."""
-        anomalies = []
-        predictions = sagemaker_result.get('predictions', [])
-        
-        labor_data = extracted_data.get('normalized_data', {}).get('labor', [])
-        if extracted_data.get('normalized_data', {}).get('materials'):
-            raise ValidationError("Materials handling removed")
-        
-        for i, (labor, prediction) in enumerate(zip(labor_data, predictions[:len(labor_data)])):
-            if prediction.get('anomaly_score', 0) > ANOMALY_THRESHOLD:
+        labor_data = extracted_data.get('normalized_data', {}).get('labor', []) or []
+        if not labor_data:
+            return pd.DataFrame()
+        labor_df = pd.DataFrame(labor_data)
+        numeric_columns = {
+            'total_hours': 0.0,
+            'unit_price': 0.0,
+            'total_cost': None
+        }
+        for col, default in numeric_columns.items():
+            if col not in labor_df:
+                labor_df[col] = default
+            labor_df[col] = pd.to_numeric(labor_df[col], errors='coerce').fillna(default if default is not None else 0.0)
+        # Derive total cost when missing
+        missing_cost = labor_df['total_cost'] == 0
+        labor_df.loc[missing_cost, 'total_cost'] = labor_df.loc[missing_cost, 'unit_price'] * labor_df.loc[missing_cost, 'total_hours']
+        labor_df['location'] = labor_df.get('location', 'default').fillna('default')
+        labor_df['labor_type'] = labor_df.get('type', 'RS').fillna('RS')
+        labor_df['ot_hours'] = (labor_df['total_hours'] - OVERTIME_THRESHOLD).clip(lower=0.0)
+        if safe_mode:
+            return labor_df
+        return labor_df
+
+    def _scale_features(self, features: np.ndarray) -> np.ndarray:
+        means = np.mean(features, axis=0)
+        stds = np.std(features, axis=0)
+        stds[stds == 0] = 1.0
+        return ((features - means) / stds).tolist()
+
+    def _process_anomaly_results(self, sagemaker_result: Dict, labor_df: pd.DataFrame) -> List[Dict[str, Any]]:
+        anomalies: List[Dict[str, Any]] = []
+        raw_predictions = sagemaker_result.get('predictions') or sagemaker_result.get('scores') or []
+        scores: List[float] = []
+        for item in raw_predictions:
+            if isinstance(item, dict):
+                score = item.get('anomaly_score')
+                if score is None:
+                    score = item.get('score')
+                if score is None and 'scores' in item and isinstance(item['scores'], list):
+                    score = item['scores'][0]
+            else:
+                score = item
+            if isinstance(score, (int, float)):
+                scores.append(float(score))
+
+        for idx, (row, score) in enumerate(zip(labor_df.itertuples(index=False), scores)):
+            if abs(score) > ANOMALY_THRESHOLD:
                 anomalies.append({
                     'type': 'labor_anomaly',
-                    'category': 'statistical_outlier',
-                    'item': labor.get('name', 'Unknown'),
-                    'labor_type': labor.get('type', 'Unknown'),
-                    'anomaly_score': prediction.get('anomaly_score'),
-                    'value': labor.get('total_cost', 0),
-                    'description': f"Labor cost ${labor.get('total_cost', 0):,.2f} is statistically anomalous",
-                    'severity': 'high' if prediction.get('anomaly_score', 0) > 3.0 else 'medium'
+                    'category': 'sagemaker_isolation_forest',
+                    'item': getattr(row, 'name', None) or row.__dict__.get('name', 'Unknown'),
+                    'labor_type': getattr(row, 'labor_type', 'Unknown'),
+                    'anomaly_score': round(score, 2),
+                    'total_hours': round(row.total_hours, 2),
+                    'total_cost': round(row.total_cost, 2),
+                    'description': f"Isolation forest flagged cost ${row.total_cost:,.2f} for {getattr(row, 'name', 'Unknown')}"
                 })
-        
         return anomalies
-    
-    def _statistical_anomaly_detection(self, extracted_data: Dict) -> List[Dict[str, Any]]:
-        """Enhanced statistical anomaly detection with negative value handling."""
-        anomalies = []
-        
+
+    def _rule_based_anomalies(self, labor_df: pd.DataFrame) -> List[Dict[str, Any]]:
+        anomalies: List[Dict[str, Any]] = []
+        rates = MSARatesComparator()
+        for row in labor_df.itertuples(index=False):
+            worker_name = getattr(row, 'name', None) or row.__dict__.get('name', 'Unknown')
+            labor_type = getattr(row, 'labor_type', 'RS')
+            hours = float(row.total_hours)
+            if row.ot_hours > 0:
+                anomalies.append({
+                    'type': 'labor_anomaly',
+                    'category': 'overtime_spike',
+                    'item': worker_name,
+                    'labor_type': labor_type,
+                    'total_hours': round(hours, 2),
+                    'overtime_hours': round(row.ot_hours, 2),
+                    'description': f"Overtime detected: {hours:.1f} hours (> {OVERTIME_THRESHOLD})"
+                })
+            expected_rate = rates.get_msa_rate(str(labor_type), getattr(row, 'location', 'default'))
+            if expected_rate:
+                expected_cost = expected_rate * hours
+                if row.total_cost > expected_cost * 1.1:
+                    anomalies.append({
+                        'type': 'labor_anomaly',
+                        'category': 'cost_threshold',
+                        'item': worker_name,
+                        'labor_type': labor_type,
+                        'total_cost': round(row.total_cost, 2),
+                        'expected_cost': round(expected_cost, 2),
+                        'description': f"Cost ${row.total_cost:,.2f} exceeds MSA expectation (${expected_cost:,.2f})"
+                    })
+        return anomalies
+
+    def _statistical_anomaly_detection(self, labor_df: pd.DataFrame) -> List[Dict[str, Any]]:
+        anomalies: List[Dict[str, Any]] = []
         try:
-            labor_data = extracted_data.get('normalized_data', {}).get('labor', [])
-            if extracted_data.get('normalized_data', {}).get('materials'):
-                raise ValidationError("Materials handling removed")
-            if labor_data and len(labor_data) > 1:
-                valid_labor_costs = []
-                valid_labor_entries = []
-                
-                for labor in labor_data:
-                    try:
-                        cost = float(labor.get('total_cost', 0))
-                        if cost > 0 and not (np.isnan(cost) or np.isinf(cost)):
-                            valid_labor_costs.append(cost)
-                            valid_labor_entries.append(labor)
-                        elif cost < 0:
-                            logger.warning(f"Negative labor cost detected: ${cost} for {labor.get('name', 'Unknown')}")
-                            anomalies.append({
-                                'type': 'labor_anomaly',
-                                'category': 'negative_value',
-                                'item': labor.get('name', 'Unknown'),
-                                'value': cost,
-                                'description': f"Negative labor cost: ${cost:,.2f}",
-                                'severity': 'high',
-                                'validation_error': True
-                            })
-                    except (ValueError, TypeError):
-                        logger.warning(f"Invalid labor cost for {labor.get('name', 'Unknown')}")
-                        continue
-                
-                if len(valid_labor_costs) > 1:
-                    mean_cost = np.mean(valid_labor_costs)
-                    std_cost = np.std(valid_labor_costs)
-                    
-                    if std_cost > 0:
-                        for labor, cost in zip(valid_labor_entries, valid_labor_costs):
-                            z_score = abs((cost - mean_cost) / std_cost)
-                            if z_score > ANOMALY_THRESHOLD:
-                                anomalies.append({
-                                    'type': 'labor_anomaly',
-                                    'category': 'statistical_outlier',
-                                    'item': labor.get('name', 'Unknown'),
-                                    'labor_type': labor.get('type', 'Unknown'),
-                                    'z_score': round(z_score, 2),
-                                    'value': cost,
-                                    'mean_value': round(mean_cost, 2),
-                                    'std_deviation': round(std_cost, 2),
-                                    'description': f"Labor cost ${cost:,.2f} is {z_score:.1f} standard deviations from mean (${mean_cost:,.2f})",
-                                    'severity': 'high' if z_score > 3.0 else 'medium'
-                                })
-            
-            logger.info(f"Statistical anomaly detection completed: {len(anomalies)} anomalies found")
-            
+            if labor_df.empty:
+                return anomalies
+            valid_costs = labor_df['total_cost'].replace([np.inf, -np.inf], np.nan).dropna()
+            if valid_costs.empty:
+                return anomalies
+            mean_cost = valid_costs.mean()
+            std_cost = valid_costs.std()
+            if std_cost == 0:
+                return anomalies
+            for row in labor_df.itertuples(index=False):
+                cost = float(row.total_cost)
+                if cost <= 0:
+                    continue
+                z_score = abs((cost - mean_cost) / std_cost)
+                if z_score > ANOMALY_THRESHOLD:
+                    anomalies.append({
+                        'type': 'labor_anomaly',
+                        'category': 'statistical_outlier',
+                        'item': getattr(row, 'name', 'Unknown'),
+                        'labor_type': getattr(row, 'labor_type', 'Unknown'),
+                        'z_score': round(z_score, 2),
+                        'value': round(cost, 2),
+                        'description': f"Labor cost ${cost:,.2f} is {z_score:.1f} std devs from mean (${mean_cost:,.2f})"
+                    })
         except Exception as e:
-            logger.error(f"Error in statistical anomaly detection: {str(e)}")
+            logger.error(f"Statistical anomaly fallback failed: {e}")
+        return anomalies
 
 
 def _calculate_rate_variances(extracted: Dict[str, Any], rates: MSARatesComparator) -> Tuple[List[Dict[str, Any]], float]:
