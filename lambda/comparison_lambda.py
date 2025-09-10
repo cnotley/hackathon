@@ -21,6 +21,7 @@ import re
 import copy
 import time
 from botocore.exceptions import ClientError  # type: ignore
+import gc
 
 # Configure logging
 logger = logging.getLogger()
@@ -674,69 +675,74 @@ def _normalize_input(event: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-    """Main handler: validate data, compute discrepancies, and return analysis JSON."""
-    logger.info(f"Received comparison event: {json.dumps(event, default=str)[:1000]}")
+    start_time = time.time()
     try:
-        extracted = _normalize_input(event)
-        if not extracted:
-            raise ValidationError("Missing or invalid extraction data")
+        logger.info(f"Received comparison event: {json.dumps(event, default=str)[:1000]}")
+        try:
+            extracted = _normalize_input(event)
+            if not extracted:
+                raise ValidationError("Missing or invalid extraction data")
 
-        # Validate numerical integrity and sanitize negatives
-        validation = DataValidator.validate_extracted_data(extracted)
-        corrected = validation.get('corrected_data', extracted)
+            # Validate numerical integrity and sanitize negatives
+            validation = DataValidator.validate_extracted_data(extracted)
+            corrected = validation.get('corrected_data', extracted)
 
-        # Compute discrepancies
-        rates = MSARatesComparator()
-        rate_variances, total_savings = _calculate_rate_variances(corrected, rates)
-        overtime_violations = _detect_overtime_violations(corrected, rates)
+            # Compute discrepancies
+            rates = MSARatesComparator()
+            rate_variances, total_savings = _calculate_rate_variances(corrected, rates)
+            overtime_violations = _detect_overtime_violations(corrected, rates)
 
-        # Anomaly detection (SageMaker with fallback)
-        anomalies = AnomalyDetector().detect_anomalies(corrected)
+            # Anomaly detection (SageMaker with fallback)
+            anomalies = AnomalyDetector().detect_anomalies(corrected)
 
-        # Duplicate detection
-        duplicates = _detect_duplicates(corrected)
+            # Duplicate detection
+            duplicates = _detect_duplicates(corrected)
 
-        # Classification validation and scope checks (labor-focused)
-        classification_issues = _validate_classifications(corrected)
-        for item in corrected.get('normalized_data', {}).get('labor', []):
-            scope = _check_scope_with_kb(item.get('description', item.get('name','')))
-            if not scope.get('in_scope', True):
-                rate_variances.append({'type':'scope_flag','item':item.get('name',''), 'score': scope.get('score',0.0)})
+            # Classification validation and scope checks (labor-focused)
+            classification_issues = _validate_classifications(corrected)
+            for item in corrected.get('normalized_data', {}).get('labor', []):
+                scope = _check_scope_with_kb(item.get('description', item.get('name','')))
+                if not scope.get('in_scope', True):
+                    rate_variances.append({'type':'scope_flag','item':item.get('name',''), 'score': scope.get('score',0.0)})
 
-        # Management-to-labor ratio heuristic
-        ratio_flags = _check_management_to_labor_ratio(corrected, rates)
+            # Management-to-labor ratio heuristic
+            ratio_flags = _check_management_to_labor_ratio(corrected, rates)
 
-        analysis = {
-            'rate_variances': rate_variances,
-            'overtime_violations': overtime_violations,
-            'anomalies': anomalies,
-            'duplicates': duplicates,
-            'ratio_flags': ratio_flags,
-            'total_savings': total_savings,
-            'summary': {
-                'total_discrepancies': len(rate_variances) + len(overtime_violations) + len(anomalies) + len(duplicates) + len(ratio_flags) + len(classification_issues),
-                'rate_variances': len(rate_variances),
-                'overtime_violations': len(overtime_violations),
-                'anomalies': len(anomalies),
-                'duplicates': len(duplicates),
-                'classification_issues': len(classification_issues)
+            analysis = {
+                'rate_variances': rate_variances,
+                'overtime_violations': overtime_violations,
+                'anomalies': anomalies,
+                'duplicates': duplicates,
+                'ratio_flags': ratio_flags,
+                'total_savings': total_savings,
+                'summary': {
+                    'total_discrepancies': len(rate_variances) + len(overtime_violations) + len(anomalies) + len(duplicates) + len(ratio_flags) + len(classification_issues),
+                    'rate_variances': len(rate_variances),
+                    'overtime_violations': len(overtime_violations),
+                    'anomalies': len(anomalies),
+                    'duplicates': len(duplicates),
+                    'classification_issues': len(classification_issues)
+                }
             }
-        }
 
-        return {
-            'statusCode': 200,
-            'discrepancy_analysis': analysis
-        }
+            return {
+                'statusCode': 200,
+                'discrepancy_analysis': analysis
+            }
 
-    except ValidationError as e:
-        logger.warning(f"Validation error: {e}")
-        return {
-            'statusCode': 400,
-            'error': str(e)
-        }
-    except Exception as e:
-        logger.error(f"Comparison handler error: {e}")
-        return {
-            'statusCode': 500,
-            'error': str(e)
-        }
+        except ValidationError as e:
+            logger.warning(f"Validation error: {e}")
+            return {
+                'statusCode': 400,
+                'error': str(e)
+            }
+        except Exception as e:
+            logger.error(f"Comparison handler error: {e}")
+            return {
+                'statusCode': 500,
+                'error': str(e)
+            }
+    finally:
+        duration = time.time() - start_time
+        logger.info(f"Metrics: duration={duration:.2f}s")
+        gc.collect()

@@ -16,6 +16,7 @@ import uuid
 import re
 from functools import lru_cache
 import time
+import gc
 
 # Configure logging
 logger = logging.getLogger()
@@ -655,7 +656,7 @@ def handle_hitl_approval(event: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-    """Main Lambda handler for agent requests with enhanced error handling."""
+    start_time = time.time()
     try:
         logger.info(f"Received event: {json.dumps(event, default=str)}")
         
@@ -727,6 +728,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'timestamp': datetime.utcnow().isoformat()
             })
         }
+    finally:
+        duration = time.time() - start_time
+        logger.info(f"Metrics: duration={duration:.2f}s")
+        gc.collect()
 
 
 if __name__ == '__main__':

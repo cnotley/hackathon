@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple, Set
 from io import BytesIO
 import math
+import gc
 
 import boto3
 import pandas as pd
@@ -1513,14 +1514,10 @@ def _filter_to_labor_only(extracted_data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-    """
-    Main Lambda handler for data extraction.
-    
-    Handles Step Functions task executions for document data extraction.
-    """
-    logger.info(f"Received extraction event: {json.dumps(event, default=str)}")
-    
+    start_time = time.time()
     try:
+        logger.info(f"Received event: {json.dumps(event, default=str)}")
+        
         # Extract task information
         task = event.get('task', 'extract')
         input_data = event.get('input', {})
@@ -1533,6 +1530,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error processing extraction event: {e}")
         raise
+    finally:
+        duration = time.time() - start_time
+        records = len(event.get('Records', [])) if isinstance(event, dict) else 0
+        logger.info(f"Metrics: duration={duration:.2f}s, records={records}")
+        gc.collect()
 
 
 def handle_extraction_task(input_data: Dict[str, Any]) -> Dict[str, Any]:

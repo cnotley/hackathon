@@ -15,6 +15,10 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 import pytest
+import pandas as pd
+import openpyxl
+from lambda.comparison_lambda import _calculate_rate_variances, MSARatesComparator, _detect_overtime_violations
+from lambda.report_lambda import ExcelReportGenerator
 
 # Add lambda directory to Python path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'lambda'))
@@ -625,3 +629,76 @@ def main():
 
 if __name__ == '__main__':
     exit(main())
+
+
+class TestLocalProcessing:
+    def setup_method(self):
+        self.tester = LocalExtractionTester()
+
+    def test_discrepancies(self):
+        labor_entries = [
+            {
+                'name': 'Alice Smith',
+                'type': 'RS',
+                'unit_price': 77.0,
+                'total_hours': 10.0,
+                'total_cost': 770.0
+            }
+        ]
+        extracted = {'normalized_data': {'labor': labor_entries}}
+        comparator = MSARatesComparator()
+        variances, savings = _calculate_rate_variances(extracted, comparator)
+        assert len(variances) == 1
+        assert savings > 0
+
+    def test_report_generation(self, monkeypatch, tmp_path):
+        generator = ExcelReportGenerator()
+        flags = {
+            'rate_variances': [
+                {
+                    'worker': 'Alice Smith',
+                    'labor_type': 'RS',
+                    'actual_rate': 77.0,
+                    'msa_rate': 70.0,
+                    'variance_percentage': 10.0,
+                    'variance_amount': 70.0,
+                    'hours': 10
+                }
+            ],
+            'overtime_violations': [],
+            'anomalies': [],
+            'duplicates': [],
+            'total_savings': 70.0
+        }
+        metadata = {
+            'invoice_number': 'INV-TEST-001',
+            'vendor': 'Test Vendor',
+            'labor_total': 700.0
+        }
+        extracted = {
+            'normalized_data': {
+                'labor': [
+                    {
+                        'name': 'Alice Smith',
+                        'type': 'RS',
+                        'total_hours': 10,
+                        'unit_price': 77,
+                        'total_cost': 770
+                    }
+                ]
+            }
+        }
+        excel_bytes = generator.generate_excel_report(flags, metadata, extracted)
+        out_file = tmp_path / 'report.xlsx'
+        out_file.write_bytes(excel_bytes)
+        wb = openpyxl.load_workbook(out_file)
+        assert 'Project Summary' in wb.sheetnames
+        summary_sheet = wb['Project Summary']
+        headers = [cell.value for cell in summary_sheet[5]]
+        assert 'As Analyzed' in headers
+
+    def test_end_to_end_pipeline(self):
+        result = self.tester.test_pdf_extraction('nonexistent.pdf')
+        assert result['extraction_status'] == 'completed'
+        assert 'materials' not in result['normalized_data']
+        assert result['analysis_results']['total_savings'] > 0

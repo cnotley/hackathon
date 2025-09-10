@@ -10,6 +10,7 @@ import streamlit as st
 import boto3
 import json
 import time
+import gc
 import pandas as pd
 from datetime import datetime
 from typing import Dict, Any, Optional, List
@@ -627,6 +628,7 @@ def main():
             help="Provide specific instructions for the analysis"
         )
         
+        start_time = time.time()
         # Upload and process button with enhanced validation
         upload_disabled = (
             uploaded_file is None or
@@ -635,7 +637,6 @@ def main():
         )
         
         if st.button("🚀 Upload & Start Analysis", type="primary", disabled=upload_disabled):
-            # Use enhanced upload with validation
             s3_key = auditor.validate_and_upload_file(uploaded_file)
             
             if s3_key:
@@ -652,6 +653,9 @@ def main():
                         
                         # Enable auto-refresh for real-time updates
                         st.session_state.auto_refresh = True
+                        duration = time.time() - start_time
+                        logger.info(f"Metrics: upload_duration={duration:.2f}s")
+                        gc.collect()
                     else:
                         st.error("❌ Failed to start analysis workflow")
         
@@ -748,9 +752,12 @@ def main():
         
         if st.session_state.uploaded_file_key:
             reports = auditor.list_reports(st.session_state.uploaded_file_key)
+            report_start = time.time()
             
             if reports:
                 st.success(f"✅ Found {len(reports)} report(s)")
+                logger.info(f"Metrics: report_listing_duration={time.time()-report_start:.2f}s, reports={len(reports)}")
+                gc.collect()
                 
                 # Group reports by type for better organization
                 report_types = {}

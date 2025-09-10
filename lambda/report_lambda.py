@@ -27,6 +27,7 @@ import shutil
 import psutil
 import gc
 import warnings
+import time
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -962,8 +963,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         "extracted_data": {...}
     }
     """
+    start_time = time.time()
     try:
-        logger.info(f"Processing enhanced report generation request: {json.dumps(event, default=str)}")
+        logger.info(f"Received report event: {json.dumps(event, default=str)[:1000]}")
         
         # Validate input
         if event.get('task') != 'generate_report':
@@ -981,17 +983,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         result = report_manager.generate_comprehensive_report(flags_data, metadata, extracted_data)
         
         logger.info(f"Enhanced report generation completed: {result['generation_status']}")
-        return result
-        
-    except Exception as e:
-        logger.error(f"Error in enhanced report Lambda handler: {str(e)}")
         return {
-            'statusCode': 500,
-            'body': json.dumps({
-                'error': str(e),
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            })
+            'status': 'success',
+            'report_summary': result
         }
+    finally:
+        duration = time.time() - start_time
+        logger.info(f"Metrics: duration={duration:.2f}s")
+        gc.collect()
 
 
 def handle_report_generation(flags_data: Dict[str, Any], metadata: Dict[str, Any], 

@@ -172,14 +172,7 @@ class MSAInvoiceAuditFullStack(Stack):
             description="Common utilities for MSA Invoice Auditing System"
         )
         
-        # wkhtmltopdf layer for PDF generation
-        self.wkhtmltopdf_layer = _lambda.LayerVersion(
-            self,
-            "MSAWkhtmltopdfLayer",
-            code=_lambda.Code.from_asset("lambda/layers/wkhtmltopdf"),
-            compatible_runtimes=[_lambda.Runtime.PYTHON_3_11],
-            description="wkhtmltopdf binary for PDF generation"
-        )
+        # Deprecated wkhtmltopdf layer removed – relying on native Excel/PDF generation
     
     def _create_lambda_functions(self) -> None:
         """Create all Lambda functions."""
@@ -324,7 +317,7 @@ class MSAInvoiceAuditFullStack(Stack):
             role=lambda_base_role,
             timeout=Duration.minutes(15),
             memory_size=2048,
-            layers=[self.common_layer, self.wkhtmltopdf_layer],
+            layers=[self.common_layer],
             environment={
                 "REPORTS_BUCKET": self.reports_bucket.bucket_name,
                 "TEMPLATES_BUCKET": self.templates_bucket.bucket_name
