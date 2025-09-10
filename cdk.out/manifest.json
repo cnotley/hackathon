@@ -1,0 +1,265 @@
+{
+  "version": "34.0.0",
+  "artifacts": {
+    "MSAInvoiceAuditFullStack.assets": {
+      "type": "cdk:asset-manifest",
+      "properties": {
+        "file": "MSAInvoiceAuditFullStack.assets.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+      }
+    },
+    "MSAInvoiceAuditFullStack": {
+      "type": "aws:cloudformation:stack",
+      "environment": "aws://unknown-account/unknown-region",
+      "properties": {
+        "templateFile": "MSAInvoiceAuditFullStack.template.json",
+        "terminationProtection": false,
+        "tags": {
+          "Environment": "Prototype",
+          "Owner": "GRT-Hackathon-Team8",
+          "Project": "MSA-Invoice-Auditing"
+        },
+        "validateOnSynth": false,
+        "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
+        "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/0317d3875d1c74acedad9d1b5a2ac677d5cadf13b1faba77f91a1de636603918.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
+        "additionalDependencies": [
+          "MSAInvoiceAuditFullStack.assets"
+        ],
+        "lookupRole": {
+          "arn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-lookup-role-${AWS::AccountId}-${AWS::Region}",
+          "requiresBootstrapStackVersion": 8,
+          "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+        }
+      },
+      "dependencies": [
+        "MSAInvoiceAuditFullStack.assets"
+      ],
+      "metadata": {
+        "/MSAInvoiceAuditFullStack": [
+          {
+            "type": "aws:cdk:stack-tags",
+            "data": [
+              {
+                "Key": "Environment",
+                "Value": "Prototype"
+              },
+              {
+                "Key": "Owner",
+                "Value": "GRT-Hackathon-Team8"
+              },
+              {
+                "Key": "Project",
+                "Value": "MSA-Invoice-Auditing"
+              }
+            ]
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/IngestionBucket/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "IngestionBucket917A3A3A"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/IngestionBucket/Policy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "IngestionBucketPolicyA79CE1F0"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/IngestionBucket/AutoDeleteObjectsCustomResource/Default": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "IngestionBucketAutoDeleteObjectsCustomResource190BFC3A"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/IngestionBucket/Notifications/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "IngestionBucketNotificationsF5F9F5B4"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/IngestionBucket/AllowBucketNotificationsToMSAInvoiceAuditFullStackIngestionLambda87DD9997": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "IngestionBucketAllowBucketNotificationsToMSAInvoiceAuditFullStackIngestionLambda87DD999780825BA8"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Role": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Handler": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/ReportsBucket/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ReportsBucket4E7C5994"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/ReportsBucket/Policy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ReportsBucketPolicy11C4A507"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/ReportsBucket/AutoDeleteObjectsCustomResource/Default": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ReportsBucketAutoDeleteObjectsCustomResource98FB8A10"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/IngestionLambda/ServiceRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "IngestionLambdaServiceRole447B9B96"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/IngestionLambda/ServiceRole/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "IngestionLambdaServiceRoleDefaultPolicyD3A17461"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/IngestionLambda/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "IngestionLambdaEF25F265"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/MsaRatesTable": [
+          {
+            "type": "aws:cdk:hasPhysicalName",
+            "data": {
+              "Ref": "MsaRatesTable67DF6646"
+            }
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/MsaRatesTable/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "MsaRatesTable67DF6646"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/SeedMsaRatesFunction/ServiceRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "SeedMsaRatesFunctionServiceRoleBF3A5048"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/SeedMsaRatesFunction/ServiceRole/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "SeedMsaRatesFunctionServiceRoleDefaultPolicy55A58CBA"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/SeedMsaRatesFunction/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "SeedMsaRatesFunctionE46D1B4B"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/SeedMsaRatesProvider/framework-onEvent/ServiceRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "SeedMsaRatesProviderframeworkonEventServiceRole874EED84"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/SeedMsaRatesProvider/framework-onEvent/ServiceRole/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "SeedMsaRatesProviderframeworkonEventServiceRoleDefaultPolicyF9877617"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/SeedMsaRatesProvider/framework-onEvent/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "SeedMsaRatesProviderframeworkonEventC0015897"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/SeedMsaRates/Default": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "SeedMsaRates"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/BucketNotificationsHandler050a0587b7544547bf325f094a3db834/Role/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "BucketNotificationsHandler050a0587b7544547bf325f094a3db834RoleB6FB88EC"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/BucketNotificationsHandler050a0587b7544547bf325f094a3db834/Role/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "BucketNotificationsHandler050a0587b7544547bf325f094a3db834RoleDefaultPolicy2CF63D36"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/BucketNotificationsHandler050a0587b7544547bf325f094a3db834/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "BucketNotificationsHandler050a0587b7544547bf325f094a3db8347ECC3691"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/IngestionBucketName": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "IngestionBucketName"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/ReportsBucketName": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ReportsBucketName"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/MsaRatesTableName": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "MsaRatesTableName"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/CDKMetadata/Default": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CDKMetadata"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/CDKMetadata/Condition": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CDKMetadataAvailable"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/BootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "BootstrapVersion"
+          }
+        ],
+        "/MSAInvoiceAuditFullStack/CheckBootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CheckBootstrapVersion"
+          }
+        ]
+      },
+      "displayName": "MSAInvoiceAuditFullStack"
+    },
+    "Tree": {
+      "type": "cdk:tree",
+      "properties": {
+        "file": "tree.json"
+      }
+    }
+  }
+}

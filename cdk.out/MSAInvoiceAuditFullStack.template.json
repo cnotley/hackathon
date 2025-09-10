@@ -1,0 +1,1310 @@
+{
+ "Description": "Minimal infrastructure for the invoice auditing prototype",
+ "Resources": {
+  "IngestionBucket917A3A3A": {
+   "Type": "AWS::S3::Bucket",
+   "Properties": {
+    "BucketEncryption": {
+     "ServerSideEncryptionConfiguration": [
+      {
+       "ServerSideEncryptionByDefault": {
+        "SSEAlgorithm": "AES256"
+       }
+      }
+     ]
+    },
+    "BucketName": {
+     "Fn::Join": [
+      "",
+      [
+       "invoice-ingestion-",
+       {
+        "Ref": "AWS::AccountId"
+       },
+       "-",
+       {
+        "Ref": "AWS::Region"
+       }
+      ]
+     ]
+    },
+    "LifecycleConfiguration": {
+     "Rules": [
+      {
+       "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 7
+       },
+       "ExpirationInDays": 90,
+       "Status": "Enabled"
+      }
+     ]
+    },
+    "PublicAccessBlockConfiguration": {
+     "BlockPublicAcls": true,
+     "BlockPublicPolicy": true,
+     "IgnorePublicAcls": true,
+     "RestrictPublicBuckets": true
+    },
+    "Tags": [
+     {
+      "Key": "aws-cdk:auto-delete-objects",
+      "Value": "true"
+     },
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ],
+    "VersioningConfiguration": {
+     "Status": "Enabled"
+    }
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/IngestionBucket/Resource"
+   }
+  },
+  "IngestionBucketPolicyA79CE1F0": {
+   "Type": "AWS::S3::BucketPolicy",
+   "Properties": {
+    "Bucket": {
+     "Ref": "IngestionBucket917A3A3A"
+    },
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "s3:PutBucketPolicy",
+        "s3:GetBucket*",
+        "s3:List*",
+        "s3:DeleteObject*"
+       ],
+       "Effect": "Allow",
+       "Principal": {
+        "AWS": {
+         "Fn::GetAtt": [
+          "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+          "Arn"
+         ]
+        }
+       },
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "IngestionBucket917A3A3A",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "IngestionBucket917A3A3A",
+             "Arn"
+            ]
+           },
+           "/*"
+          ]
+         ]
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/IngestionBucket/Policy/Resource"
+   }
+  },
+  "IngestionBucketAutoDeleteObjectsCustomResource190BFC3A": {
+   "Type": "Custom::S3AutoDeleteObjects",
+   "Properties": {
+    "ServiceToken": {
+     "Fn::GetAtt": [
+      "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F",
+      "Arn"
+     ]
+    },
+    "BucketName": {
+     "Ref": "IngestionBucket917A3A3A"
+    }
+   },
+   "DependsOn": [
+    "IngestionBucketPolicyA79CE1F0"
+   ],
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/IngestionBucket/AutoDeleteObjectsCustomResource/Default"
+   }
+  },
+  "IngestionBucketNotificationsF5F9F5B4": {
+   "Type": "Custom::S3BucketNotifications",
+   "Properties": {
+    "ServiceToken": {
+     "Fn::GetAtt": [
+      "BucketNotificationsHandler050a0587b7544547bf325f094a3db8347ECC3691",
+      "Arn"
+     ]
+    },
+    "BucketName": {
+     "Ref": "IngestionBucket917A3A3A"
+    },
+    "NotificationConfiguration": {
+     "LambdaFunctionConfigurations": [
+      {
+       "Events": [
+        "s3:ObjectCreated:*"
+       ],
+       "LambdaFunctionArn": {
+        "Fn::GetAtt": [
+         "IngestionLambdaEF25F265",
+         "Arn"
+        ]
+       }
+      }
+     ]
+    },
+    "Managed": true
+   },
+   "DependsOn": [
+    "IngestionBucketAllowBucketNotificationsToMSAInvoiceAuditFullStackIngestionLambda87DD999780825BA8"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/IngestionBucket/Notifications/Resource"
+   }
+  },
+  "IngestionBucketAllowBucketNotificationsToMSAInvoiceAuditFullStackIngestionLambda87DD999780825BA8": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "IngestionLambdaEF25F265",
+      "Arn"
+     ]
+    },
+    "Principal": "s3.amazonaws.com",
+    "SourceAccount": {
+     "Ref": "AWS::AccountId"
+    },
+    "SourceArn": {
+     "Fn::GetAtt": [
+      "IngestionBucket917A3A3A",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/IngestionBucket/AllowBucketNotificationsToMSAInvoiceAuditFullStackIngestionLambda87DD9997"
+   }
+  },
+  "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Version": "2012-10-17",
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ]
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Role"
+   }
+  },
+  "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+     },
+     "S3Key": "b7f33614a69548d6bafe224d751a7ef238cde19097415e553fe8b63a4c8fd8a6.zip"
+    },
+    "Timeout": 900,
+    "MemorySize": 128,
+    "Handler": "index.handler",
+    "Role": {
+     "Fn::GetAtt": [
+      "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs18.x",
+    "Description": {
+     "Fn::Join": [
+      "",
+      [
+       "Lambda function for auto-deleting objects in ",
+       {
+        "Ref": "IngestionBucket917A3A3A"
+       },
+       " S3 bucket."
+      ]
+     ]
+    }
+   },
+   "DependsOn": [
+    "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Handler",
+    "aws:asset:path": "asset.b7f33614a69548d6bafe224d751a7ef238cde19097415e553fe8b63a4c8fd8a6",
+    "aws:asset:property": "Code"
+   }
+  },
+  "ReportsBucket4E7C5994": {
+   "Type": "AWS::S3::Bucket",
+   "Properties": {
+    "BucketEncryption": {
+     "ServerSideEncryptionConfiguration": [
+      {
+       "ServerSideEncryptionByDefault": {
+        "SSEAlgorithm": "AES256"
+       }
+      }
+     ]
+    },
+    "BucketName": {
+     "Fn::Join": [
+      "",
+      [
+       "invoice-reports-",
+       {
+        "Ref": "AWS::AccountId"
+       },
+       "-",
+       {
+        "Ref": "AWS::Region"
+       }
+      ]
+     ]
+    },
+    "LifecycleConfiguration": {
+     "Rules": [
+      {
+       "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 7
+       },
+       "ExpirationInDays": 90,
+       "Status": "Enabled"
+      }
+     ]
+    },
+    "PublicAccessBlockConfiguration": {
+     "BlockPublicAcls": true,
+     "BlockPublicPolicy": true,
+     "IgnorePublicAcls": true,
+     "RestrictPublicBuckets": true
+    },
+    "Tags": [
+     {
+      "Key": "aws-cdk:auto-delete-objects",
+      "Value": "true"
+     },
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ],
+    "VersioningConfiguration": {
+     "Status": "Enabled"
+    }
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/ReportsBucket/Resource"
+   }
+  },
+  "ReportsBucketPolicy11C4A507": {
+   "Type": "AWS::S3::BucketPolicy",
+   "Properties": {
+    "Bucket": {
+     "Ref": "ReportsBucket4E7C5994"
+    },
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "s3:PutBucketPolicy",
+        "s3:GetBucket*",
+        "s3:List*",
+        "s3:DeleteObject*"
+       ],
+       "Effect": "Allow",
+       "Principal": {
+        "AWS": {
+         "Fn::GetAtt": [
+          "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+          "Arn"
+         ]
+        }
+       },
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "ReportsBucket4E7C5994",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "ReportsBucket4E7C5994",
+             "Arn"
+            ]
+           },
+           "/*"
+          ]
+         ]
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/ReportsBucket/Policy/Resource"
+   }
+  },
+  "ReportsBucketAutoDeleteObjectsCustomResource98FB8A10": {
+   "Type": "Custom::S3AutoDeleteObjects",
+   "Properties": {
+    "ServiceToken": {
+     "Fn::GetAtt": [
+      "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F",
+      "Arn"
+     ]
+    },
+    "BucketName": {
+     "Ref": "ReportsBucket4E7C5994"
+    }
+   },
+   "DependsOn": [
+    "ReportsBucketPolicy11C4A507"
+   ],
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/ReportsBucket/AutoDeleteObjectsCustomResource/Default"
+   }
+  },
+  "IngestionLambdaServiceRole447B9B96": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ],
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/IngestionLambda/ServiceRole/Resource"
+   }
+  },
+  "IngestionLambdaServiceRoleDefaultPolicyD3A17461": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "s3:GetObject*",
+        "s3:GetBucket*",
+        "s3:List*",
+        "s3:DeleteObject*",
+        "s3:PutObject",
+        "s3:PutObjectLegalHold",
+        "s3:PutObjectRetention",
+        "s3:PutObjectTagging",
+        "s3:PutObjectVersionTagging",
+        "s3:Abort*"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "IngestionBucket917A3A3A",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "IngestionBucket917A3A3A",
+             "Arn"
+            ]
+           },
+           "/*"
+          ]
+         ]
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "IngestionLambdaServiceRoleDefaultPolicyD3A17461",
+    "Roles": [
+     {
+      "Ref": "IngestionLambdaServiceRole447B9B96"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/IngestionLambda/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "IngestionLambdaEF25F265": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+     },
+     "S3Key": "8f519d98e55328a0ab8baf10a6db94574428c1d726cb64fafacdfe277d1af7e8.zip"
+    },
+    "Environment": {
+     "Variables": {
+      "INGESTION_BUCKET_NAME": {
+       "Ref": "IngestionBucket917A3A3A"
+      }
+     }
+    },
+    "Handler": "ingestion_lambda.lambda_handler",
+    "MemorySize": 512,
+    "Role": {
+     "Fn::GetAtt": [
+      "IngestionLambdaServiceRole447B9B96",
+      "Arn"
+     ]
+    },
+    "Runtime": "python3.11",
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ],
+    "Timeout": 300
+   },
+   "DependsOn": [
+    "IngestionLambdaServiceRoleDefaultPolicyD3A17461",
+    "IngestionLambdaServiceRole447B9B96"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/IngestionLambda/Resource",
+    "aws:asset:path": "asset.8f519d98e55328a0ab8baf10a6db94574428c1d726cb64fafacdfe277d1af7e8",
+    "aws:asset:is-bundled": true,
+    "aws:asset:property": "Code"
+   }
+  },
+  "MsaRatesTable67DF6646": {
+   "Type": "AWS::DynamoDB::Table",
+   "Properties": {
+    "AttributeDefinitions": [
+     {
+      "AttributeName": "rate_id",
+      "AttributeType": "S"
+     },
+     {
+      "AttributeName": "effective_date",
+      "AttributeType": "S"
+     }
+    ],
+    "BillingMode": "PAY_PER_REQUEST",
+    "KeySchema": [
+     {
+      "AttributeName": "rate_id",
+      "KeyType": "HASH"
+     },
+     {
+      "AttributeName": "effective_date",
+      "KeyType": "RANGE"
+     }
+    ],
+    "TableName": "msa-rates",
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ]
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/MsaRatesTable/Resource"
+   }
+  },
+  "SeedMsaRatesFunctionServiceRoleBF3A5048": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ],
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/SeedMsaRatesFunction/ServiceRole/Resource"
+   }
+  },
+  "SeedMsaRatesFunctionServiceRoleDefaultPolicy55A58CBA": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "dynamodb:BatchWriteItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:DescribeTable"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "MsaRatesTable67DF6646",
+          "Arn"
+         ]
+        },
+        {
+         "Ref": "AWS::NoValue"
+        }
+       ]
+      },
+      {
+       "Action": "dynamodb:BatchWriteItem",
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "MsaRatesTable67DF6646",
+         "Arn"
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "SeedMsaRatesFunctionServiceRoleDefaultPolicy55A58CBA",
+    "Roles": [
+     {
+      "Ref": "SeedMsaRatesFunctionServiceRoleBF3A5048"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/SeedMsaRatesFunction/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "SeedMsaRatesFunctionE46D1B4B": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+     },
+     "S3Key": "3c1e77db7395ccbece11fff9215cef3dc064e8a91d9dd38fd3ae6f18dc4963e8.zip"
+    },
+    "Handler": "seed_msa_rates.lambda_handler",
+    "Role": {
+     "Fn::GetAtt": [
+      "SeedMsaRatesFunctionServiceRoleBF3A5048",
+      "Arn"
+     ]
+    },
+    "Runtime": "python3.11",
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ],
+    "Timeout": 300
+   },
+   "DependsOn": [
+    "SeedMsaRatesFunctionServiceRoleDefaultPolicy55A58CBA",
+    "SeedMsaRatesFunctionServiceRoleBF3A5048"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/SeedMsaRatesFunction/Resource",
+    "aws:asset:path": "asset.3c1e77db7395ccbece11fff9215cef3dc064e8a91d9dd38fd3ae6f18dc4963e8",
+    "aws:asset:is-bundled": false,
+    "aws:asset:property": "Code"
+   }
+  },
+  "SeedMsaRatesProviderframeworkonEventServiceRole874EED84": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ],
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/SeedMsaRatesProvider/framework-onEvent/ServiceRole/Resource"
+   }
+  },
+  "SeedMsaRatesProviderframeworkonEventServiceRoleDefaultPolicyF9877617": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "lambda:InvokeFunction",
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "SeedMsaRatesFunctionE46D1B4B",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "SeedMsaRatesFunctionE46D1B4B",
+             "Arn"
+            ]
+           },
+           ":*"
+          ]
+         ]
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "SeedMsaRatesProviderframeworkonEventServiceRoleDefaultPolicyF9877617",
+    "Roles": [
+     {
+      "Ref": "SeedMsaRatesProviderframeworkonEventServiceRole874EED84"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/SeedMsaRatesProvider/framework-onEvent/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "SeedMsaRatesProviderframeworkonEventC0015897": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+     },
+     "S3Key": "7382a0addb9f34974a1ea6c6c9b063882af874828f366f5c93b2b7b64db15c94.zip"
+    },
+    "Description": "AWS CDK resource provider framework - onEvent (MSAInvoiceAuditFullStack/SeedMsaRatesProvider)",
+    "Environment": {
+     "Variables": {
+      "USER_ON_EVENT_FUNCTION_ARN": {
+       "Fn::GetAtt": [
+        "SeedMsaRatesFunctionE46D1B4B",
+        "Arn"
+       ]
+      }
+     }
+    },
+    "Handler": "framework.onEvent",
+    "Role": {
+     "Fn::GetAtt": [
+      "SeedMsaRatesProviderframeworkonEventServiceRole874EED84",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs18.x",
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ],
+    "Timeout": 900
+   },
+   "DependsOn": [
+    "SeedMsaRatesProviderframeworkonEventServiceRoleDefaultPolicyF9877617",
+    "SeedMsaRatesProviderframeworkonEventServiceRole874EED84"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/SeedMsaRatesProvider/framework-onEvent/Resource",
+    "aws:asset:path": "asset.7382a0addb9f34974a1ea6c6c9b063882af874828f366f5c93b2b7b64db15c94",
+    "aws:asset:is-bundled": false,
+    "aws:asset:property": "Code"
+   }
+  },
+  "SeedMsaRates": {
+   "Type": "AWS::CloudFormation::CustomResource",
+   "Properties": {
+    "ServiceToken": {
+     "Fn::GetAtt": [
+      "SeedMsaRatesProviderframeworkonEventC0015897",
+      "Arn"
+     ]
+    },
+    "TableName": {
+     "Ref": "MsaRatesTable67DF6646"
+    }
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/SeedMsaRates/Default"
+   }
+  },
+  "BucketNotificationsHandler050a0587b7544547bf325f094a3db834RoleB6FB88EC": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ],
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/BucketNotificationsHandler050a0587b7544547bf325f094a3db834/Role/Resource"
+   }
+  },
+  "BucketNotificationsHandler050a0587b7544547bf325f094a3db834RoleDefaultPolicy2CF63D36": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "s3:PutBucketNotification",
+       "Effect": "Allow",
+       "Resource": "*"
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "BucketNotificationsHandler050a0587b7544547bf325f094a3db834RoleDefaultPolicy2CF63D36",
+    "Roles": [
+     {
+      "Ref": "BucketNotificationsHandler050a0587b7544547bf325f094a3db834RoleB6FB88EC"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/BucketNotificationsHandler050a0587b7544547bf325f094a3db834/Role/DefaultPolicy/Resource"
+   }
+  },
+  "BucketNotificationsHandler050a0587b7544547bf325f094a3db8347ECC3691": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Description": "AWS CloudFormation handler for \"Custom::S3BucketNotifications\" resources (@aws-cdk/aws-s3)",
+    "Code": {
+     "ZipFile": "import boto3  # type: ignore\nimport json\nimport logging\nimport urllib.request\n\ns3 = boto3.client(\"s3\")\n\nEVENTBRIDGE_CONFIGURATION = 'EventBridgeConfiguration'\n\nCONFIGURATION_TYPES = [\"TopicConfigurations\", \"QueueConfigurations\", \"LambdaFunctionConfigurations\"]\n\ndef handler(event: dict, context):\n  response_status = \"SUCCESS\"\n  error_message = \"\"\n  try:\n    props = event[\"ResourceProperties\"]\n    bucket = props[\"BucketName\"]\n    notification_configuration = props[\"NotificationConfiguration\"]\n    request_type = event[\"RequestType\"]\n    managed = props.get('Managed', 'true').lower() == 'true'\n    stack_id = event['StackId']\n\n    if managed:\n      config = handle_managed(request_type, notification_configuration)\n    else:\n      config = handle_unmanaged(bucket, stack_id, request_type, notification_configuration)\n\n    put_bucket_notification_configuration(bucket, config)\n  except Exception as e:\n    logging.exception(\"Failed to put bucket notification configuration\")\n    response_status = \"FAILED\"\n    error_message = f\"Error: {str(e)}. \"\n  finally:\n    submit_response(event, context, response_status, error_message)\n\ndef handle_managed(request_type, notification_configuration):\n  if request_type == 'Delete':\n    return {}\n  return notification_configuration\n\ndef handle_unmanaged(bucket, stack_id, request_type, notification_configuration):\n  external_notifications = find_external_notifications(bucket, stack_id)\n\n  if request_type == 'Delete':\n    return external_notifications\n\n  def with_id(notification):\n    notification['Id'] = f\"{stack_id}-{hash(json.dumps(notification, sort_keys=True))}\"\n    return notification\n\n  notifications = {}\n  for t in CONFIGURATION_TYPES:\n    external = external_notifications.get(t, [])\n    incoming = [with_id(n) for n in notification_configuration.get(t, [])]\n    notifications[t] = external + incoming\n\n  if EVENTBRIDGE_CONFIGURATION in notification_configuration:\n    notifications[EVENTBRIDGE_CONFIGURATION] = notification_configuration[EVENTBRIDGE_CONFIGURATION]\n  elif EVENTBRIDGE_CONFIGURATION in external_notifications:\n    notifications[EVENTBRIDGE_CONFIGURATION] = external_notifications[EVENTBRIDGE_CONFIGURATION]\n\n  return notifications\n\ndef find_external_notifications(bucket, stack_id):\n  existing_notifications = get_bucket_notification_configuration(bucket)\n  external_notifications = {}\n  for t in CONFIGURATION_TYPES:\n    external_notifications[t] = [n for n in existing_notifications.get(t, []) if not n['Id'].startswith(f\"{stack_id}-\")]\n\n  if EVENTBRIDGE_CONFIGURATION in existing_notifications:\n    external_notifications[EVENTBRIDGE_CONFIGURATION] = existing_notifications[EVENTBRIDGE_CONFIGURATION]\n\n  return external_notifications\n\ndef get_bucket_notification_configuration(bucket):\n  return s3.get_bucket_notification_configuration(Bucket=bucket)\n\ndef put_bucket_notification_configuration(bucket, notification_configuration):\n  s3.put_bucket_notification_configuration(Bucket=bucket, NotificationConfiguration=notification_configuration)\n\ndef submit_response(event: dict, context, response_status: str, error_message: str):\n  response_body = json.dumps(\n    {\n      \"Status\": response_status,\n      \"Reason\": f\"{error_message}See the details in CloudWatch Log Stream: {context.log_stream_name}\",\n      \"PhysicalResourceId\": event.get(\"PhysicalResourceId\") or event[\"LogicalResourceId\"],\n      \"StackId\": event[\"StackId\"],\n      \"RequestId\": event[\"RequestId\"],\n      \"LogicalResourceId\": event[\"LogicalResourceId\"],\n      \"NoEcho\": False,\n    }\n  ).encode(\"utf-8\")\n  headers = {\"content-type\": \"\", \"content-length\": str(len(response_body))}\n  try:\n    req = urllib.request.Request(url=event[\"ResponseURL\"], headers=headers, data=response_body, method=\"PUT\")\n    with urllib.request.urlopen(req) as response:\n      print(response.read().decode(\"utf-8\"))\n    print(\"Status code: \" + response.reason)\n  except Exception as e:\n      print(\"send(..) failed executing request.urlopen(..): \" + str(e))\n"
+    },
+    "Handler": "index.handler",
+    "Role": {
+     "Fn::GetAtt": [
+      "BucketNotificationsHandler050a0587b7544547bf325f094a3db834RoleB6FB88EC",
+      "Arn"
+     ]
+    },
+    "Runtime": "python3.9",
+    "Timeout": 300,
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "Prototype"
+     },
+     {
+      "Key": "Owner",
+      "Value": "GRT-Hackathon-Team8"
+     },
+     {
+      "Key": "Project",
+      "Value": "MSA-Invoice-Auditing"
+     }
+    ]
+   },
+   "DependsOn": [
+    "BucketNotificationsHandler050a0587b7544547bf325f094a3db834RoleDefaultPolicy2CF63D36",
+    "BucketNotificationsHandler050a0587b7544547bf325f094a3db834RoleB6FB88EC"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/BucketNotificationsHandler050a0587b7544547bf325f094a3db834/Resource"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/1VQTU/EIBD9LXunY3d78Ow28WpTvTcUcB1bwDCgaUj/uxRqN57eB483DBc41zXUJ/5DlZBTNeMI8dVzMbFkDZEaiNcgJuVZ+252VqCzM4rlbu+6iCsntbKZ61FyiCnTKaeRCK1hz8EIv5Fk//GVIdcQezurzc54H1DYyqgZOJHyBE8bMLkYrq1MT37jY7mZybqyNpC3uldkgxOl8+D/jjpnv1Eqx3JlWv2G5saOsMjhwe2a4Minypfgv0L+mdYaiWWRbvEf1jw0cG7g8fRJiJULxqNW0Bf8BZ8H/R91AQAA"
+   },
+   "Metadata": {
+    "aws:cdk:path": "MSAInvoiceAuditFullStack/CDKMetadata/Default"
+   },
+   "Condition": "CDKMetadataAvailable"
+  }
+ },
+ "Outputs": {
+  "IngestionBucketName": {
+   "Description": "S3 bucket for invoice ingestion",
+   "Value": {
+    "Ref": "IngestionBucket917A3A3A"
+   }
+  },
+  "ReportsBucketName": {
+   "Description": "S3 bucket for generated reports",
+   "Value": {
+    "Ref": "ReportsBucket4E7C5994"
+   }
+  },
+  "MsaRatesTableName": {
+   "Description": "DynamoDB table for MSA rates",
+   "Value": {
+    "Ref": "MsaRatesTable67DF6646"
+   }
+  }
+ },
+ "Conditions": {
+  "CDKMetadataAvailable": {
+   "Fn::Or": [
+    {
+     "Fn::Or": [
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "af-south-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-east-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-northeast-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-northeast-2"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-south-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-southeast-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-southeast-2"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ca-central-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "cn-north-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "cn-northwest-1"
+       ]
+      }
+     ]
+    },
+    {
+     "Fn::Or": [
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-central-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-north-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-south-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-west-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-west-2"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-west-3"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "me-south-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "sa-east-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "us-east-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "us-east-2"
+       ]
+      }
+     ]
+    },
+    {
+     "Fn::Or": [
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "us-west-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "us-west-2"
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "Parameters": {
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

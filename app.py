@@ -22,98 +22,28 @@ to identify overcharges, compliance issues, and potential savings opportunities.
 """
 
 import aws_cdk as cdk
-from infrastructure.ingestion_stack import InvoiceIngestionStack
-from infrastructure.agent_stack import InvoiceAuditAgentStack
-from infrastructure.ui_stack import MSAInvoiceAuditUIStack
 from infrastructure.full_stack import MSAInvoiceAuditFullStack
 
 
-def main():
-    """
-    Main function to create and deploy the complete MSA Invoice Auditing System.
-    
-    Provides two deployment options:
-    1. Full Stack - Single integrated deployment (recommended for production)
-    2. Modular Stacks - Separate stacks for development and testing
-    
-    Use CDK context to choose deployment mode:
-    - cdk deploy --context deployment=full (default)
-    - cdk deploy --context deployment=modular
-    """
+def main() -> None:
     app = cdk.App()
-    
-    # Define common environment from CDK context
+
     env = cdk.Environment(
         account=app.node.try_get_context("account"),
-        region=app.node.try_get_context("region")
+        region=app.node.try_get_context("region"),
     )
-    
-    # Get deployment mode from context (default to full)
-    deployment_mode = app.node.try_get_context("deployment") or "full"
-    
-    if deployment_mode == "full":
-        # Deploy as single integrated stack (recommended)
-        full_stack = MSAInvoiceAuditFullStack(
-            app,
-            "MSAInvoiceAuditFullStack",
-            description="Complete MSA Invoice Auditing System - All components integrated",
-            env=env
-        )
-        
-        # Add stack tags
-        cdk.Tags.of(full_stack).add("Project", "MSA-Invoice-Auditing")
-        cdk.Tags.of(full_stack).add("Environment", "Production")
-        cdk.Tags.of(full_stack).add("Owner", "GRT-Hackathon-Team8")
-        cdk.Tags.of(full_stack).add("DeploymentMode", "Full")
-        
-    else:
-        # Deploy as separate modular stacks (for development/testing)
-        
-        # Create the file ingestion and processing stack
-        ingestion_stack = InvoiceIngestionStack(
-            app, 
-            "MSAInvoiceIngestionStack",
-            description="MSA Invoice Auditing - File ingestion and data extraction components",
-            env=env
-        )
-        
-        # Create the AI agent stack with comprehensive analysis and reporting
-        agent_stack = InvoiceAuditAgentStack(
-            app,
-            "MSAInvoiceAuditAgentStack",
-            ingestion_bucket=ingestion_stack.bucket,
-            extraction_lambda=ingestion_stack.extraction_lambda,
-            description="MSA Invoice Auditing - AI agent, analysis, comparison, and report generation",
-            env=env
-        )
-        
-        # Ensure ingestion stack is deployed before agent stack
-        agent_stack.add_dependency(ingestion_stack)
-        
-        # Create the UI stack with Streamlit application
-        ui_stack = MSAInvoiceAuditUIStack(
-            app,
-            "MSAInvoiceAuditUIStack",
-            ingestion_bucket_name=ingestion_stack.bucket.bucket_name,
-            reports_bucket_name=agent_stack.reports_bucket.bucket_name,
-            step_function_arn=agent_stack.step_function.state_machine_arn,
-            bedrock_agent_id=agent_stack.bedrock_agent.attr_agent_id,
-            bedrock_agent_alias_id="TSTALIASID",
-            description="MSA Invoice Auditing - Streamlit web interface",
-            env=env
-        )
-        
-        # Ensure UI stack is deployed after both ingestion and agent stacks
-        ui_stack.add_dependency(ingestion_stack)
-        ui_stack.add_dependency(agent_stack)
-        
-        # Add stack tags for modular deployment
-        for stack in [ingestion_stack, agent_stack, ui_stack]:
-            cdk.Tags.of(stack).add("Project", "MSA-Invoice-Auditing")
-            cdk.Tags.of(stack).add("Environment", "Development")
-            cdk.Tags.of(stack).add("Owner", "GRT-Hackathon-Team8")
-            cdk.Tags.of(stack).add("DeploymentMode", "Modular")
-    
+
+    full_stack = MSAInvoiceAuditFullStack(
+        app,
+        "MSAInvoiceAuditFullStack",
+        description="Minimal infrastructure for the invoice auditing prototype",
+        env=env,
+    )
+
+    cdk.Tags.of(full_stack).add("Project", "MSA-Invoice-Auditing")
+    cdk.Tags.of(full_stack).add("Environment", "Prototype")
+    cdk.Tags.of(full_stack).add("Owner", "GRT-Hackathon-Team8")
+
     app.synth()
 
 
