@@ -1,0 +1,148 @@
+{
+  "Comment": "Complete MSA Invoice Auditing Workflow - End-to-End Processing",
+  "StartAt": "ExtractData",
+  "States": {
+    "ExtractData": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ExtractionLambdaArn}",
+        "Payload": {
+          "bucket.$": "$.bucket",
+          "key.$": "$.key"
+        }
+      },
+      "ResultPath": "$.extraction",
+      "Next": "InvokeAgent",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "ExtractionFailed",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "InvokeAgent": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${AgentLambdaArn}",
+        "Payload": {
+          "extracted_data.$": "$.extraction.Payload",
+          "bucket.$": "$.bucket",
+          "key.$": "$.key"
+        }
+      },
+      "ResultPath": "$.agent_analysis",
+      "Next": "CompareRates",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "AgentAnalysisFailed",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "CompareRates": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ComparisonLambdaArn}",
+        "Payload": {
+          "extracted_data.$": "$.extraction.Payload",
+          "agent_analysis.$": "$.agent_analysis.Payload",
+          "bucket.$": "$.bucket",
+          "key.$": "$.key"
+        }
+      },
+      "ResultPath": "$.comparison",
+      "Next": "GenerateReport",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "ComparisonFailed",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "GenerateReport": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ReportLambdaArn}",
+        "Payload": {
+          "extracted_data.$": "$.extraction.Payload",
+          "agent_analysis.$": "$.agent_analysis.Payload",
+          "comparison_results.$": "$.comparison.Payload",
+          "bucket.$": "$.bucket",
+          "key.$": "$.key"
+        }
+      },
+      "ResultPath": "$.report",
+      "Next": "AuditComplete",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "ReportGenerationFailed",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "AuditComplete": {
+      "Type": "Succeed",
+      "Comment": "MSA invoice audit completed successfully with comprehensive report generated"
+    },
+    "ExtractionFailed": {
+      "Type": "Fail",
+      "Comment": "Data extraction from invoice failed",
+      "Cause": "Unable to extract structured data from the uploaded invoice file"
+    },
+    "AgentAnalysisFailed": {
+      "Type": "Fail",
+      "Comment": "AI agent analysis failed",
+      "Cause": "Bedrock agent was unable to analyze the extracted invoice data"
+    },
+    "ComparisonFailed": {
+      "Type": "Fail",
+      "Comment": "MSA rate comparison failed",
+      "Cause": "Unable to compare invoice rates against MSA standards"
+    },
+    "ReportGenerationFailed": {
+      "Type": "Fail",
+      "Comment": "Report generation failed",
+      "Cause": "Unable to generate comprehensive audit report"
+    }
+  }
+}
