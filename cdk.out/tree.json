@@ -679,7 +679,7 @@
                       "s3Bucket": {
                         "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
                       },
-                      "s3Key": "3c1e77db7395ccbece11fff9215cef3dc064e8a91d9dd38fd3ae6f18dc4963e8.zip"
+                      "s3Key": "87a5b8f93d8412910daabee5c0030d85d10f060fa4727d053884fb793e427a24.zip"
                     },
                     "handler": "seed_msa_rates.lambda_handler",
                     "role": {
@@ -1184,7 +1184,7 @@
                       "s3Bucket": {
                         "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
                       },
-                      "s3Key": "47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c.zip"
+                      "s3Key": "a8e27dda4e1ec2f05914c999588b1df863705f7290fd89934cdc05d036fe61a3.zip"
                     },
                     "environment": {
                       "variables": {
@@ -1445,7 +1445,7 @@
                       "s3Bucket": {
                         "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
                       },
-                      "s3Key": "47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c.zip"
+                      "s3Key": "a8e27dda4e1ec2f05914c999588b1df863705f7290fd89934cdc05d036fe61a3.zip"
                     },
                     "environment": {
                       "variables": {
@@ -1673,7 +1673,7 @@
                       "s3Bucket": {
                         "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
                       },
-                      "s3Key": "47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c.zip"
+                      "s3Key": "a8e27dda4e1ec2f05914c999588b1df863705f7290fd89934cdc05d036fe61a3.zip"
                     },
                     "environment": {
                       "variables": {
@@ -1931,7 +1931,7 @@
                       "s3Bucket": {
                         "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
                       },
-                      "s3Key": "47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c.zip"
+                      "s3Key": "a8e27dda4e1ec2f05914c999588b1df863705f7290fd89934cdc05d036fe61a3.zip"
                     },
                     "environment": {
                       "variables": {
@@ -2721,7 +2721,7 @@
                   "autoDeploymentsEnabled": true,
                   "imageRepository": {
                     "imageIdentifier": {
-                      "Fn::Sub": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/cdk-hnb659fds-container-assets-${AWS::AccountId}-${AWS::Region}:c99d392ac6716adcd5f5bd0ed467c88084bfe7541333e8a14980207759d46634"
+                      "Fn::Sub": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/cdk-hnb659fds-container-assets-${AWS::AccountId}-${AWS::Region}:deeb2dcd25131b4a2c5b42ca23d2da1be87e59b5d47f990540c82ca8d58756e0"
                     },
                     "imageRepositoryType": "ECR",
                     "imageConfiguration": {

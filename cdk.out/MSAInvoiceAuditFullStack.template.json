@@ -577,7 +577,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "3c1e77db7395ccbece11fff9215cef3dc064e8a91d9dd38fd3ae6f18dc4963e8.zip"
+     "S3Key": "87a5b8f93d8412910daabee5c0030d85d10f060fa4727d053884fb793e427a24.zip"
     },
     "Handler": "seed_msa_rates.lambda_handler",
     "Role": {
@@ -609,7 +609,7 @@
    ],
    "Metadata": {
     "aws:cdk:path": "MSAInvoiceAuditFullStack/SeedMsaRatesFunction/Resource",
-    "aws:asset:path": "asset.3c1e77db7395ccbece11fff9215cef3dc064e8a91d9dd38fd3ae6f18dc4963e8",
+    "aws:asset:path": "asset.87a5b8f93d8412910daabee5c0030d85d10f060fa4727d053884fb793e427a24",
     "aws:asset:is-bundled": false,
     "aws:asset:property": "Code"
    }
@@ -929,7 +929,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c.zip"
+     "S3Key": "a8e27dda4e1ec2f05914c999588b1df863705f7290fd89934cdc05d036fe61a3.zip"
     },
     "Environment": {
      "Variables": {
@@ -972,7 +972,7 @@
    ],
    "Metadata": {
     "aws:cdk:path": "MSAInvoiceAuditFullStack/IngestionLambda/Resource",
-    "aws:asset:path": "asset.47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c",
+    "aws:asset:path": "asset.a8e27dda4e1ec2f05914c999588b1df863705f7290fd89934cdc05d036fe61a3",
     "aws:asset:is-bundled": true,
     "aws:asset:property": "Code"
    }
@@ -1118,7 +1118,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c.zip"
+     "S3Key": "a8e27dda4e1ec2f05914c999588b1df863705f7290fd89934cdc05d036fe61a3.zip"
     },
     "Environment": {
      "Variables": {
@@ -1158,7 +1158,7 @@
    ],
    "Metadata": {
     "aws:cdk:path": "MSAInvoiceAuditFullStack/ExtractionLambda/Resource",
-    "aws:asset:path": "asset.47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c",
+    "aws:asset:path": "asset.a8e27dda4e1ec2f05914c999588b1df863705f7290fd89934cdc05d036fe61a3",
     "aws:asset:is-bundled": true,
     "aws:asset:property": "Code"
    }
@@ -1274,7 +1274,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c.zip"
+     "S3Key": "a8e27dda4e1ec2f05914c999588b1df863705f7290fd89934cdc05d036fe61a3.zip"
     },
     "Environment": {
      "Variables": {
@@ -1314,7 +1314,7 @@
    ],
    "Metadata": {
     "aws:cdk:path": "MSAInvoiceAuditFullStack/ReconciliationLambda/Resource",
-    "aws:asset:path": "asset.47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c",
+    "aws:asset:path": "asset.a8e27dda4e1ec2f05914c999588b1df863705f7290fd89934cdc05d036fe61a3",
     "aws:asset:is-bundled": true,
     "aws:asset:property": "Code"
    }
@@ -1460,7 +1460,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c.zip"
+     "S3Key": "a8e27dda4e1ec2f05914c999588b1df863705f7290fd89934cdc05d036fe61a3.zip"
     },
     "Environment": {
      "Variables": {
@@ -1500,7 +1500,7 @@
    ],
    "Metadata": {
     "aws:cdk:path": "MSAInvoiceAuditFullStack/ReportLambda/Resource",
-    "aws:asset:path": "asset.47af9bd3a90aa06842c3bfc03bafa20a89dcf3cd194578699e0760309a0fcb6c",
+    "aws:asset:path": "asset.a8e27dda4e1ec2f05914c999588b1df863705f7290fd89934cdc05d036fe61a3",
     "aws:asset:is-bundled": true,
     "aws:asset:property": "Code"
    }
@@ -2185,7 +2185,7 @@
        ]
       },
       "ImageIdentifier": {
-       "Fn::Sub": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/cdk-hnb659fds-container-assets-${AWS::AccountId}-${AWS::Region}:c99d392ac6716adcd5f5bd0ed467c88084bfe7541333e8a14980207759d46634"
+       "Fn::Sub": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/cdk-hnb659fds-container-assets-${AWS::AccountId}-${AWS::Region}:deeb2dcd25131b4a2c5b42ca23d2da1be87e59b5d47f990540c82ca8d58756e0"
       },
       "ImageRepositoryType": "ECR"
      }
