@@ -11,8 +11,14 @@ if not logger.handlers:
 
 OCR_MIN_CONF = float(os.environ.get("OCR_MIN_CONF","0.8"))
 
-def _textract_analyze(bucket, key):
-    """Run Textract document analysis with optional adapter and queries."""
+def _textract_analyze(bucket, key, max_attempts=25, max_elapsed=120):
+    """Run Textract document analysis with optional adapter and queries.
+
+    A maximum number of polling attempts and overall elapsed time are enforced
+    to avoid waiting indefinitely for Textract to finish processing.  If the
+    job does not complete within the allowed limits a ``TimeoutError`` is
+    raised to signal the caller that the analysis timed out.
+    """
     tx = client("textract")
     if not key.lower().endswith(".pdf"):
         raise NotImplementedError("Non-PDF path not implemented in prototype.")
@@ -36,13 +42,21 @@ def _textract_analyze(bucket, key):
     job = tx.start_document_analysis(**params)
     job_id = job["JobId"]
     delay = 1.0
+    attempts = 0
+    start = time.time()
     while True:
+        if attempts >= max_attempts or (time.time() - start) > max_elapsed:
+            elapsed = time.time() - start
+            raise TimeoutError(
+                f"Textract analysis timed out after {attempts} attempts and {elapsed:.1f}s"
+            )
         resp = tx.get_document_analysis(JobId=job_id)
         status = resp.get("JobStatus")
         if status in ("SUCCEEDED", "FAILED", "PARTIAL_SUCCESS"):
             return resp
         time.sleep(delay)
         delay = min(10.0, delay * 1.6)
+        attempts += 1
 
     return {}
 
