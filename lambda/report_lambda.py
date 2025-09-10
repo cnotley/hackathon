@@ -871,382 +871,77 @@ class MemoryOptimizedExcelGenerator(ExcelReportGenerator):
                             extracted_data: Dict[str, Any]) -> bytes:
         """Generate Excel report with memory optimization and conditional formatting."""
         try:
-            # Check initial memory
             initial_memory = self._check_memory_usage()
             logger.info(f"Starting Excel generation with {initial_memory:.1f}MB memory usage")
-            
-            # Download template with error handling
             template_content = self._download_template_with_retries()
-            
-            # Load template workbook
             with tempfile.NamedTemporaryFile() as temp_file:
                 if template_content:
                     temp_file.write(template_content)
                     temp_file.flush()
                     workbook = openpyxl.load_workbook(temp_file.name)
                 else:
-                    # Create new workbook if template unavailable
                     workbook = openpyxl.Workbook()
-                    workbook.remove(workbook.active)  # Remove default sheet
-            
-            # Fill template with data
+                    workbook.remove(workbook.active)
+
+            if workbook is None:
+                raise ReportValidationError("Workbook failed to initialize")
+
+            self._populate_project_summary_sheet(workbook, flags_data, metadata)
             self._fill_project_information(workbook, metadata)
             self._check_memory_usage()
-            
             self._fill_project_summary(workbook, flags_data, metadata)
             self._check_memory_usage()
-            
             self._fill_labor_export_optimized(workbook, extracted_data, flags_data)
             self._check_memory_usage()
-            
-            # Add conditional formatting
             self._add_conditional_formatting(workbook, flags_data)
-            
-            # Save to bytes with memory monitoring
+
             output_buffer = BytesIO()
             workbook.save(output_buffer)
             output_buffer.seek(0)
-            
-            final_memory = self._check_memory_usage()
-            logger.info(f"Excel generation completed. Memory: {initial_memory:.1f}MB -> {final_memory:.1f}MB")
-            
+
+            logger.info("Successfully generated Excel report")
             return output_buffer.getvalue()
-            
+
         except Exception as e:
-            logger.error(f"Error generating Excel report: {str(e)}")
-            # Generate fallback Excel report
+            logger.error(f"Excel report generation failed: {str(e)}")
             return self._generate_fallback_excel(flags_data, metadata, extracted_data)
-    
-    def _download_template_with_retries(self, max_retries: int = 3) -> bytes:
-        """Download Excel template from S3 with retry logic."""
-        for attempt in range(max_retries):
-            try:
-                response = self.s3_client.get_object(
-                    Bucket=self.template_bucket,
-                    Key=self.template_key
-                )
-                content = response['Body'].read()
-                logger.info(f"Successfully downloaded template on attempt {attempt + 1}")
-                return content
-                
-            except ClientError as e:
-                error_code = e.response['Error']['Code']
-                logger.warning(f"Template download attempt {attempt + 1} failed: {error_code}")
-                
-                if attempt == max_retries - 1:
-                    logger.error(f"Failed to download template after {max_retries} attempts")
-                    return b''
-                
-                # Wait before retry
-                import time
-                time.sleep(2 ** attempt)  # Exponential backoff
-        
-        return b''
-    
-    def _fill_labor_export_optimized(self, workbook: openpyxl.Workbook, 
-                                   extracted_data: Dict[str, Any], flags_data: Dict[str, Any]):
-        """Fill Labor Export tab with memory optimization."""
-        try:
-            # Prepare data structure
-            headers = ['Worker Name', 'Labor Type', 'Hours', 'Rate', 'Total', 'MSA Rate', 'Variance', 'Savings']
-            
-            labor_entries = extracted_data.get('normalized_data', {}).get('labor', [])
-            if extracted_data.get('normalized_data', {}).get('materials'):
-                raise ValueError("Materials handling removed")
-            
-            rate_variances = {v.get('worker'): v for v in flags_data.get('rate_variances', [])}
-            
-            # Build data rows
-            data_rows = [headers]
-            
-            for entry in labor_entries:
-                worker_name = entry.get('name', 'Unknown')
-                labor_type = entry.get('type', 'N/A')
-                hours = entry.get('total_hours', 0)
-                rate = entry.get('unit_price', 0)
-                total = hours * rate
-                
-                # Get variance data if available
-                variance_data = rate_variances.get(worker_name, {})
-                msa_rate = variance_data.get('msa_rate', rate)
-                variance_pct = variance_data.get('variance_percentage', 0)
-                savings = variance_data.get('savings', 0)
-                
-                row_data = [
-                    worker_name,
-                    labor_type,
-                    f"{hours:.1f}",
-                    f"${rate:.2f}",
-                    f"${total:.2f}",
-                    f"${msa_rate:.2f}",
-                    f"{variance_pct:.1f}%",
-                    f"${savings:.2f}"
-                ]
-                data_rows.append(row_data)
-            
-            # Use chunked writing for large datasets
-            self._chunk_write_excel(workbook, data_rows, 'Labor Export')
-            
-        except Exception as e:
-            logger.error(f"Error filling optimized Labor Export: {str(e)}")
 
 
-class EnhancedPDFConverter(PDFConverter):
-    """Enhanced PDF converter with wkhtmltopdf validation."""
-    
-    def __init__(self):
-        super().__init__()
-        self.wkhtmltopdf_path = self._validate_wkhtmltopdf_path()
-    
-    def _validate_wkhtmltopdf_path(self) -> str:
-        """Validate and find wkhtmltopdf executable."""
-        for path in WKHTMLTOPDF_PATHS:
-            try:
-                if shutil.which(path):
-                    # Test if the binary works
-                    result = subprocess.run([path, '--version'], 
-                                          capture_output=True, text=True, timeout=10)
-                    if result.returncode == 0:
-                        logger.info(f"Found working wkhtmltopdf at: {path}")
-                        return path
-                except Exception as e:
-                    logger.debug(f"wkhtmltopdf test failed for {path}: {str(e)}")
-                    continue
-        
-        # If no working wkhtmltopdf found
-        raise ReportValidationError(
-            "wkhtmltopdf not found or not functional. "
-            "Please install wkhtmltopdf or check the Lambda layer configuration."
-        )
-    
-    def markdown_to_pdf(self, markdown_content: str) -> bytes:
-        """Convert Markdown content to PDF with enhanced validation."""
-        try:
-            # Validate wkhtmltopdf is available
-            if not self.wkhtmltopdf_path:
-                raise ReportValidationError("wkhtmltopdf path not validated")
-            
-            # Convert Markdown to HTML
-            html_content = markdown.markdown(markdown_content, extensions=['tables', 'fenced_code'])
-            
-            # Add enhanced CSS styling
-            styled_html = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <style>
-                    body {{ 
-                        font-family: Arial, sans-serif; 
-                        line-height: 1.6; 
-                        margin: 0; 
-                        padding: 20px; 
-                        font-size: 12px;
-                    }}
-                    h1 {{ 
-                        color: #2c3e50; 
-                        border-bottom: 2px solid #3498db; 
-                        padding-bottom: 10px;
-                        page-break-before: auto;
-                    }}
-                    h2 {{ 
-                        color: #34495e; 
-                        margin-top: 30px;
-                        page-break-before: auto;
-                    }}
-                    h3 {{ color: #7f8c8d; }}
-                    table {{ 
-                        border-collapse: collapse; 
-                        width: 100%; 
-                        margin: 20px 0;
-                        page-break-inside: avoid;
-                    }}
-                    th, td {{ 
-                        border: 1px solid #ddd; 
-                        padding: 8px; 
-                        text-align: left;
-                        font-size: 11px;
-                    }}
-                    th {{ 
-                        background-color: #f2f2f2; 
-                        font-weight: bold; 
-                    }}
-                    .highlight {{ 
-                        background-color: #fff3cd; 
-                        padding: 10px; 
-                        border-left: 4px solid #ffc107;
-                        page-break-inside: avoid;
-                    }}
-                    .variance-high {{ color: #cc0000; font-weight: bold; }}
-                    .variance-medium {{ color: #ff8800; font-weight: bold; }}
-                    .savings {{ color: #008800; font-weight: bold; }}
-                    @page {{
-                        margin: 0.75in;
-                        @bottom-right {{
-                            content: "Page " counter(page) " of " counter(pages);
-                        }}
-                    }}
-                </style>
-            </head>
-            <body>
-                {html_content}
-            </body>
-            </html>
-            """
-            
-            # Enhanced PDF options
-            pdf_options = {
-                'page-size': 'Letter',
-                'margin-top': '0.75in',
-                'margin-right': '0.75in',
-                'margin-bottom': '0.75in',
-                'margin-left': '0.75in',
-                'encoding': "UTF-8",
-                'no-outline': None,
-                'enable-local-file-access': None,
-                'print-media-type': None,
-                'disable-smart-shrinking': None,
-                'footer-right': '[page]',
-                'footer-font-size': '8'
-            }
-            
-            # Convert HTML to PDF with validation
-            pdf_content = pdfkit.from_string(
-                styled_html, 
-                False, 
-                options=pdf_options,
-                configuration=pdfkit.configuration(wkhtmltopdf=self.wkhtmltopdf_path)
-            )
-            
-            if not pdf_content:
-                raise ReportValidationError("PDF conversion returned empty content")
-            
-            logger.info(f"Successfully converted Markdown to PDF using {self.wkhtmltopdf_path}")
-            return pdf_content
-            
-        except subprocess.TimeoutExpired:
-            logger.error("PDF conversion timed out")
-            return b''
-        except Exception as e:
-            logger.error(f"Error converting Markdown to PDF: {str(e)}")
-            return b''
-
-
-class EnhancedReportManager(ReportManager):
-    """Enhanced report manager with validation and optimization."""
-    
-    def __init__(self):
-        super().__init__()
-        # Use enhanced generators
-        self.excel_generator = MemoryOptimizedExcelGenerator()
-        self.pdf_converter = EnhancedPDFConverter()
-    
-    def generate_comprehensive_report(self, flags_data: Dict[str, Any], metadata: Dict[str, Any], 
-                                    extracted_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate comprehensive audit report with enhancements."""
-        try:
-            # Validate inputs
-            self._validate_report_inputs(flags_data, metadata, extracted_data)
-            
-            report_id = f"audit-{metadata.get('invoice_number', 'unknown')}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-            
-            # Generate reports with error handling
-            reports_generated = {}
-            
-            # Generate Markdown report
-            try:
-                markdown_report = self.bedrock_generator.generate_markdown_report(flags_data, metadata)
-                reports_generated['markdown'] = markdown_report
-            except Exception as e:
-                logger.error(f"Markdown generation failed: {str(e)}")
-                reports_generated['markdown'] = ""
-            
-            # Generate Excel report
-            try:
-                excel_report = self.excel_generator.generate_excel_report(flags_data, metadata, extracted_data)
-                reports_generated['excel'] = excel_report
-            except Exception as e:
-                logger.error(f"Excel generation failed: {str(e)}")
-                reports_generated['excel'] = b''
-            
-            # Convert Markdown to PDF
-            try:
-                if reports_generated.get('markdown'):
-                    pdf_report = self.pdf_converter.markdown_to_pdf(reports_generated['markdown'])
-                    reports_generated['pdf'] = pdf_report
-                else:
-                    reports_generated['pdf'] = b''
-            except Exception as e:
-                logger.error(f"PDF generation failed: {str(e)}")
-                reports_generated['pdf'] = b''
-            
-            # Upload reports to S3
-            report_urls = self._upload_reports(
-                report_id, 
-                reports_generated.get('markdown', ''),
-                reports_generated.get('excel', b''),
-                reports_generated.get('pdf', b'')
-            )
-            
-            # Calculate success metrics
-            successful_reports = sum(1 for content in reports_generated.values() if content)
-            
-            # Prepare response
-            result = {
-                'report_id': report_id,
-                'generation_status': 'completed' if successful_reports > 0 else 'partial',
-                'timestamp': datetime.now(timezone.utc).isoformat(),
-                'reports': report_urls,
-                'reports_generated': successful_reports,
-                'total_reports': len(reports_generated),
-                'summary': {
-                    'total_savings': flags_data.get('total_savings', 0),
-                    'discrepancies_found': len(flags_data.get('rate_variances', [])) + 
-                                         len(flags_data.get('overtime_violations', [])) + 
-                                         len(flags_data.get('anomalies', [])),
-                    'as_presented': metadata.get('invoice_total', 0),
-                    'as_analyzed': metadata.get('invoice_total', 0) - flags_data.get('total_savings', 0)
-                }
-            }
-            
-            logger.info(f"Report generation completed: {result['generation_status']} ({successful_reports}/{len(reports_generated)} reports)")
-            return result
-            
-        except Exception as e:
-            logger.error(f"Error generating comprehensive report: {str(e)}")
-            return {
-                'report_id': f"error-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
-                'generation_status': 'failed',
-                'error': str(e),
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            }
-    
-    def _validate_report_inputs(self, flags_data: Dict[str, Any], metadata: Dict[str, Any], 
-                              extracted_data: Dict[str, Any]):
-        """Validate report generation inputs."""
-        if not isinstance(flags_data, dict):
-            raise ReportValidationError("flags_data must be a dictionary")
-        
-        if not isinstance(metadata, dict):
-            raise ReportValidationError("metadata must be a dictionary")
-        
-        if not isinstance(extracted_data, dict):
-            raise ReportValidationError("extracted_data must be a dictionary")
-        
-        # Check required fields
-        required_flags_fields = ['rate_variances', 'overtime_violations', 'anomalies', 'total_savings']
-        for field in required_flags_fields:
-            if field not in flags_data:
-                logger.warning(f"Missing required flags field: {field}")
-                flags_data[field] = [] if field != 'total_savings' else 0
-
-        total_savings = flags_data.get('total_savings', 0)
-        rate_variances = flags_data.get('rate_variances', [])
-        overtime_violations = flags_data.get('overtime_violations', [])
-        anomalies = flags_data.get('anomalies', [])
-
-        if metadata.get('material_total'):
-            raise ReportValidationError("Materials handling removed")
+if __name__ == '__main__':
+    sample_flags = {
+        'rate_variances': [
+            {'worker': 'Alice Smith', 'labor_type': 'RS', 'billed_rate': 95.0, 'msa_rate': 70.0, 'hours': 40, 'variance_percentage': 35.7, 'variance_amount': 1000.0},
+            {'worker': 'Bob Jones', 'labor_type': 'US', 'billed_rate': 60.0, 'msa_rate': 45.0, 'hours': 50, 'variance_percentage': 33.3, 'variance_amount': 750.0}
+        ],
+        'overtime_violations': [
+            {'worker': 'Charlie Lee', 'labor_type': 'SS', 'total_hours': 55, 'overtime_hours': 15}
+        ],
+        'anomalies': [],
+        'duplicates': [],
+        'total_savings': 1750.0
+    }
+    sample_metadata = {
+        'invoice_number': 'INV-TEST-001',
+        'vendor': 'Labor Services Inc.',
+        'date_of_loss': '2025-01-10',
+        'invoice_total': 120000.0,
+        'labor_total': 90000.0,
+        'average_msa_rate': 60.0
+    }
+    sample_extracted = {
+        'normalized_data': {
+            'labor': [
+                {'name': 'Alice Smith', 'type': 'RS', 'total_hours': 40, 'unit_price': 95.0},
+                {'name': 'Bob Jones', 'type': 'US', 'total_hours': 50, 'unit_price': 60.0},
+                {'name': 'Charlie Lee', 'type': 'SS', 'total_hours': 55, 'unit_price': 55.0}
+            ]
+        }
+    }
+    generator = ExcelReportGenerator()
+    excel_bytes = generator.generate_excel_report(sample_flags, sample_metadata, sample_extracted)
+    with open('sample_project_summary.xlsx', 'wb') as f:
+        f.write(excel_bytes)
+    print("Generated sample_project_summary.xlsx for inspection 🧾")
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
