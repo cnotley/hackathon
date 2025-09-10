@@ -5,7 +5,7 @@ import os
 import time
 import urllib.parse
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 
 import boto3
 from botocore.exceptions import ClientError
@@ -15,11 +15,15 @@ logger.setLevel(os.environ.get('LOG_LEVEL', 'INFO'))
 
 s3_client = boto3.client('s3')
 stepfunctions_client = boto3.client('stepfunctions')
+lambda_client = boto3.client('lambda')
 
-BUCKET_NAME = os.environ.get('BUCKET_NAME')
 STATE_MACHINE_ARN = os.environ.get('STATE_MACHINE_ARN')
-
 MAX_FILE_SIZE = 5 * 1024 * 1024
+USE_SFN = os.environ.get('USE_SFN', 'true').lower() == 'true'
+EXTRACTION_LAMBDA_NAME = os.environ.get('EXTRACTION_LAMBDA_NAME', 'extraction-lambda')
+RECONCILIATION_LAMBDA_NAME = os.environ.get('RECONCILIATION_LAMBDA_NAME', 'reconciliation-lambda')
+REPORT_LAMBDA_NAME = os.environ.get('REPORT_LAMBDA_NAME', 'report-lambda')
+DEFAULT_VENDOR_NAME = os.environ.get('DEFAULT_VENDOR_NAME', 'UNKNOWN')
 
 class FileProcessor:
     def __init__(self, bucket_name: str):
@@ -29,15 +33,25 @@ class FileProcessor:
     def get_file_info(self, key: str) -> Dict[str, Any]:
         try:
             response = self.s3_client.head_object(Bucket=self.bucket_name, Key=key)
+            object_metadata = response.get('Metadata', {}) or {}
+            tags = self._get_object_tags(key)
             file_info = {
                 'key': key,
                 'size': response.get('ContentLength', 0),
                 'last_modified': response.get('LastModified').isoformat() if response.get('LastModified') else None,
                 'content_type': response.get('ContentType', ''),
                 'etag': response.get('ETag', '').strip('"'),
-                'metadata': response.get('Metadata', {}),
-                'tags': self._get_object_tags(key)
+                'metadata': object_metadata,
+                'tags': tags
             }
+            vendor_value = (
+                object_metadata.get('vendor')
+                or object_metadata.get('Vendor')
+                or tags.get('vendor')
+                or tags.get('Vendor')
+            )
+            if vendor_value:
+                file_info['vendor'] = str(vendor_value).strip().upper()
             file_extension = os.path.splitext(key)[1].lower()
             file_info['extension'] = file_extension
             file_info['is_supported'] = file_extension == '.pdf'
@@ -89,6 +103,9 @@ class FileProcessor:
         metadata['document_type'] = 'pdf'
         metadata['processing_priority'] = 'high'
         metadata.update(file_info.get('metadata', {}))
+        vendor = file_info.get('vendor')
+        if vendor:
+            metadata['vendor'] = vendor
         return metadata
 
 class WorkflowOrchestrator:
@@ -130,9 +147,23 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         raise ValueError("Unknown event type")
     except ValueError as error:
         logger.warning(f"Rejected event due to invalid file type: {error}")
+        records = event.get('Records') if isinstance(event, dict) else None
+        record = records[0] if records else {}
+        file_key = record.get('s3', {}).get('object', {}).get('key', 'unknown')
         return {
             'statusCode': 400,
-            'error': 'Invalid file type'
+            'error': 'Invalid file type',
+            'body': {
+                'message': 'Invalid file type',
+                'results': [
+                    {
+                        'file': file_key,
+                        'status': 'error',
+                        'error': str(error) or 'Invalid file type',
+                    }
+                ],
+                'total_files': 1,
+            },
         }
     except Exception as e:
         logger.error(f"Error processing event: {e}")
@@ -144,9 +175,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         gc.collect()
 
 def handle_s3_event(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-    results = []
-    batch_files = []
+    results: List[Dict[str, Any]] = []
+    orchestrator = WorkflowOrchestrator(STATE_MACHINE_ARN) if USE_SFN and STATE_MACHINE_ARN else None
+
     for record in event['Records']:
+        key = None
         try:
             bucket = record['s3']['bucket']['name']
             key = urllib.parse.unquote_plus(record['s3']['object']['key'], encoding='utf-8')
@@ -155,66 +188,125 @@ def handle_s3_event(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if file_extension != '.pdf':
                 logger.warning(f"Rejected non-PDF file: {key}")
                 raise ValueError("Only PDF files are supported")
+
             file_processor = FileProcessor(bucket)
             file_info = file_processor.get_file_info(key)
             logger.info(f"File info: {file_info}")
             validation = file_processor.validate_file(file_info)
             if not validation['is_valid']:
-                results.append({
-                    'file': key,
-                    'status': 'error',
-                    'error': '; '.join(validation['errors']) or 'Validation failed'
-                })
+                results.append(
+                    {
+                        'file': key,
+                        'status': 'error',
+                        'error': '; '.join(validation['errors']) or 'Validation failed'
+                    }
+                )
                 continue
-            batch_files.append({
+
+            workflow_input = {
                 'file_info': file_info,
                 'bucket': bucket,
                 'key': key,
-                'record': record,
-                'validation': validation
-            })
-        except ValueError:
-            raise
-        except Exception as e:
-            logger.error(f"Error processing S3 record: {e}")
-            results.append({
-                'file': key if 'key' in locals() else 'unknown',
-                'status': 'error',
-                'error': str(e)
-            })
-    for file_data in batch_files:
-        try:
-            workflow_input = {
-                'file_info': file_data['file_info'],
-                'bucket': file_data['bucket'],
-                'key': file_data['key'],
                 'event_time': datetime.utcnow().isoformat(),
                 'source': 's3_event',
-                'batch_mode': False
+                'batch_mode': False,
+                'vendor': file_info.get('vendor') or DEFAULT_VENDOR_NAME,
             }
-            orchestrator = WorkflowOrchestrator(STATE_MACHINE_ARN)
-            execution_arn = orchestrator.start_workflow(workflow_input)
-            results.append({
-                'file': file_data['key'],
-                'status': 'workflow_started',
-                'execution_arn': execution_arn
-            })
-        except Exception as e:
-            logger.error(f"Error processing file {file_data['key']}: {e}")
-            results.append({
-                'file': file_data['key'],
-                'status': 'error',
-                'error': str(e)
-            })
+
+            if orchestrator:
+                execution_arn = orchestrator.start_workflow(workflow_input)
+                results.append(
+                    {
+                        'file': key,
+                        'status': 'workflow_started',
+                        'execution_arn': execution_arn
+                    }
+                )
+            else:
+                fallback_result = _fallback_direct_processing(bucket, key, workflow_input)
+                results.append(
+                    {
+                        'file': key,
+                        'status': 'fallback_completed',
+                        'details': fallback_result
+                    }
+                )
+        except ValueError:
+            raise
+        except Exception as exc:
+            logger.error(f"Error processing S3 record: {exc}")
+            results.append(
+                {
+                    'file': key or 'unknown',
+                    'status': 'error',
+                    'error': str(exc)
+                }
+            )
+
     return {
         'statusCode': 200,
         'body': {
             'message': 'S3 event processed',
             'results': results,
-            'batch_processed': len(batch_files) > 1,
-            'total_files': len(batch_files)
+            'total_files': len(results)
         }
     }
+
+def _fallback_direct_processing(bucket: str, key: str, workflow_input: Dict[str, Any]) -> Dict[str, Any]:
+    vendor = workflow_input.get('vendor') or DEFAULT_VENDOR_NAME
+    file_info = workflow_input.get('file_info', {})
+
+    extraction_payload = _invoke_lambda(
+        EXTRACTION_LAMBDA_NAME,
+        {
+            'bucket': bucket,
+            'key': key,
+            'file_info': file_info,
+            'vendor': vendor,
+        }
+    )
+
+    reconciliation_payload = _invoke_lambda(
+        RECONCILIATION_LAMBDA_NAME,
+        {
+            'extraction': {'Payload': extraction_payload},
+            'vendor': vendor,
+        }
+    )
+
+    report_payload = _invoke_lambda(
+        REPORT_LAMBDA_NAME,
+        {
+            'extracted_data': extraction_payload,
+            'reconciliation': reconciliation_payload,
+            'vendor': vendor,
+            'file_info': file_info,
+        }
+    )
+
+    return {
+        'extraction': extraction_payload,
+        'reconciliation': reconciliation_payload,
+        'report': report_payload,
+    }
+
+
+def _invoke_lambda(function_name: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    logger.info(f"Invoking {function_name} with payload keys: {list(payload.keys())}")
+    try:
+        response = lambda_client.invoke(
+            FunctionName=function_name,
+            InvocationType='RequestResponse',
+            Payload=json.dumps(payload, default=str).encode('utf-8'),
+        )
+        raw_payload = response.get('Payload')
+        if raw_payload is None:
+            return {}
+        body = raw_payload.read().decode('utf-8')
+        return json.loads(body) if body else {}
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.error(f"Invocation of {function_name} failed: {exc}")
+        return {'status': 'error', 'error': str(exc)}
 
 if __name__ == '__main__':
     sample_event = {

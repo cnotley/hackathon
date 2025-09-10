@@ -8,20 +8,13 @@ import time
 from io import BytesIO
 from typing import Any, Dict, List
 
-try:  # pragma: no cover - optional dependency for local runs
-    from dotenv import load_dotenv
-
-    load_dotenv()
-except ImportError:  # pragma: no cover
-    pass
-
 import boto3
 import pandas as pd
 import streamlit as st
 from botocore.exceptions import ClientError
 
-INGESTION_BUCKET = os.environ.get("INGESTION_BUCKET") or os.environ.get("INGESTION_BUCKET_NAME")
-REPORTS_BUCKET = os.environ.get("REPORTS_BUCKET") or os.environ.get("REPORTS_BUCKET_NAME")
+INGESTION_BUCKET = os.environ.get("INGESTION_BUCKET_NAME")
+REPORTS_BUCKET = os.environ.get("REPORTS_BUCKET_NAME")
 STATE_MACHINE_ARN = os.environ.get("STATE_MACHINE_ARN")
 
 s3_client = boto3.client("s3")
@@ -62,61 +55,37 @@ def _poll_execution(execution_arn: str) -> Dict[str, Any]:
     response = stepfunctions_client.describe_execution(executionArn=execution_arn)
     status = response.get("status", "UNKNOWN")
     output = {}
-    if response.get("output"):
+    if status in {"SUCCEEDED", "FAILED", "TIMED_OUT"} and response.get("output"):
         try:
             output = json.loads(response["output"])
-        except json.JSONDecodeError:  # pragma: no cover
+        except json.JSONDecodeError:
             output = {"raw": response["output"]}
-    parsed = _parse_execution_output(output)
-    return {"status": status, "output": output, "parsed": parsed, "executionArn": execution_arn}
+    return {"status": status, "output": output, "executionArn": execution_arn}
 
 
-def _parse_execution_output(output: Dict[str, Any]) -> Dict[str, Any]:
-    reconciliation_payload = output.get("reconciliation", {}).get("Payload", {})
-    report_payload = output.get("report", {}).get("Payload", {})
-
-    discrepancies = report_payload.get("discrepancies") or reconciliation_payload.get("discrepancies") or []
-    vendor = (
-        report_payload.get("vendor")
-        or reconciliation_payload.get("vendor")
-        or output.get("vendor")
-        or "UNKNOWN"
-    )
-    total_savings = report_payload.get("total_savings") or reconciliation_payload.get("total_savings")
-
-    return {
-        "discrepancies": discrepancies,
-        "vendor": vendor,
-        "total_savings": total_savings,
-        "report": report_payload,
-        "reconciliation": reconciliation_payload,
-    }
-
-
-def _display_discrepancies(parsed: Dict[str, Any]) -> None:
-    discrepancies = parsed.get("discrepancies") or []
-    vendor = parsed.get("vendor") or "UNKNOWN"
+def _display_discrepancies(output: Dict[str, Any]) -> None:
+    discrepancies = output.get("discrepancies") or output.get("discrepancy_analysis", {}).get("rate_variances")
     if not discrepancies:
         st.info("No discrepancies reported.")
         return
-
     df = pd.DataFrame(discrepancies)
-    if "vendor" not in df.columns:
-        df.insert(0, "vendor", vendor)
     st.dataframe(df, use_container_width=True)
-    if parsed.get("total_savings") is not None:
-        st.metric("Estimated Savings", f"${parsed['total_savings']:.2f}")
+
+
+def _send_decision(task_token: str, approved: bool) -> None:
+    payload = json.dumps({"approved": approved})
+    try:
+        stepfunctions_client.send_task_success(taskToken=task_token, output=payload)
+        st.success("Decision sent to Step Functions.")
+    except ClientError as exc:  # pragma: no cover
+        st.error(f"Failed to send decision: {exc}")
 
 
 def _list_reports(prefix: str | None = None) -> List[Dict[str, Any]]:
     list_kwargs: Dict[str, Any] = {"Bucket": REPORTS_BUCKET, "Prefix": "reports/"}
     if prefix:
         list_kwargs["Prefix"] = prefix
-    try:
-        response = s3_client.list_objects_v2(**list_kwargs)
-    except ClientError as exc:  # pragma: no cover
-        st.error(f"Unable to list reports: {exc}")
-        return []
+    response = s3_client.list_objects_v2(**list_kwargs)
     contents = response.get("Contents", [])
     return sorted(contents, key=lambda obj: obj["LastModified"], reverse=True)
 
@@ -134,44 +103,35 @@ def _download_button(obj: Dict[str, Any]) -> None:
 
 uploaded_file = st.file_uploader("Upload invoice PDF", type=["pdf"])
 if uploaded_file is not None:
-    key = _upload_pdf(uploaded_file)
-    if key:
+    filename = uploaded_file.name
+    key = f"uploads/{int(time.time())}_{filename}"
+    try:
+        s3_client.upload_fileobj(uploaded_file, INGESTION_BUCKET, key, ExtraArgs={"ContentType": "application/pdf"})
         st.success(f"Uploaded to s3://{INGESTION_BUCKET}/{key}")
         execution_arn = _start_execution(key)
         if execution_arn:
             st.session_state.execution_arn = execution_arn
-            st.info("Execution started. Status will update below.")
+            st.info("Execution started. Use the status panel to monitor progress.")
+    except ClientError as exc:  # pragma: no cover
+        st.error(f"Upload failed: {exc}")
 
 execution_arn = st.session_state.get("execution_arn")
 if execution_arn:
     st.subheader("Execution status")
-    with st.spinner("Polling execution status..."):
-        result = _poll_execution(execution_arn)
+    result = _poll_execution(execution_arn)
     st.write(f"Status: {result['status']}")
     if result["status"] in {"RUNNING", "STARTED"}:
         st.button("Refresh", on_click=lambda: st.experimental_rerun())
-    elif result["status"] == "SUCCEEDED":
-        _display_discrepancies(result.get("parsed", {}))
-        report_payload = result.get("parsed", {}).get("report") or {}
-        if report_payload:
-            st.success(f"Report stored at s3://{REPORTS_BUCKET}/{report_payload.get('key', 'reports/...')}")
-    elif result["status"] in {"FAILED", "TIMED_OUT"}:
-        st.error(result.get("output", {}))
+    if result["status"] == "SUCCEEDED":
+        _display_discrepancies(result.get("output", {}))
+    if result["status"] == "FAILED":
+        st.error(result.get("output"))
 
 st.subheader("Reports")
 reports = _list_reports()
 if reports:
-    report_table = [
-        {
-            "Report": obj["Key"].split("/")[-1],
-            "LastModified": obj["LastModified"],
-            "SizeBytes": obj.get("Size"),
-        }
-        for obj in reports
-    ]
-    st.dataframe(pd.DataFrame(report_table), use_container_width=True)
     latest = reports[0]
-    st.markdown(f"**Latest report:** {latest['Key'].split('/')[-1]} ({latest['LastModified']})")
+    st.write(f"Latest report: {latest['Key'].split('/')[-1]} ({latest['LastModified']})")
     _download_button(latest)
 else:
     st.info("No reports available yet.")

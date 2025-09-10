@@ -86,7 +86,7 @@ class TestMSAInvoiceAuditor:
         auditor.s3_client.put_object.return_value = {}
         
         file_content = b'test file content'
-        filename = 'test_invoice.pdf'
+        filename = 'test-invoice.pdf'
         
         with patch('datetime') as mock_datetime:
             mock_datetime.now.return_value.strftime.return_value = '20241201_143000'

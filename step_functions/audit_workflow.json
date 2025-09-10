@@ -1,5 +1,5 @@
 {
-  "Comment": "Complete MSA Invoice Auditing Workflow - End-to-End Processing",
+  "Comment": "MSA Invoice Auditing Workflow - MVP",
   "StartAt": "ExtractData",
   "States": {
     "ExtractData": {
@@ -13,10 +13,14 @@
         }
       },
       "ResultPath": "$.extraction",
-      "Next": "InvokeAgent",
+      "Next": "Reconcile",
       "Retry": [
         {
-          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
           "IntervalSeconds": 2,
           "MaxAttempts": 3,
           "BackoffRate": 2.0
@@ -30,108 +34,36 @@
         }
       ]
     },
-    "InvokeAgent": {
+    "Reconcile": {
       "Type": "Task",
       "Resource": "arn:aws:states:::lambda:invoke",
       "Parameters": {
-        "FunctionName": "${AgentLambdaArn}",
+        "FunctionName": "${ReconciliationLambdaArn}",
         "Payload": {
           "extracted_data.$": "$.extraction.Payload",
+          "vendor.$": "$.extraction.Payload.vendor",
           "bucket.$": "$.bucket",
           "key.$": "$.key"
         }
       },
-      "ResultPath": "$.agent_analysis",
-      "Next": "CheckApprovalState",
-      "Retry": [
-        {
-          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
-          "IntervalSeconds": 2,
-          "MaxAttempts": 3,
-          "BackoffRate": 2.0
-        }
-      ],
-      "Catch": [
-        {
-          "ErrorEquals": ["States.ALL"],
-          "Next": "AgentAnalysisFailed",
-          "ResultPath": "$.error"
-        }
-      ]
-    },
-    "CheckApprovalState": {
-      "Type": "Choice",
-      "Choices": [
-        {
-          "Variable": "$.agent_analysis.Payload.status",
-          "StringEquals": "pending_approval",
-          "Next": "WaitForApproval"
-        }
-      ],
-      "Default": "CompareRates"
-    },
-    "WaitForApproval": {
-      "Type": "Wait",
-      "Seconds": 30,
-      "Next": "CheckApprovalState"
-    },
-    "CompareRates": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::lambda:invoke",
-      "Parameters": {
-        "FunctionName": "${ComparisonLambdaArn}",
-        "Payload": {
-          "extracted_data.$": "$.extraction.Payload",
-          "agent_analysis.$": "$.agent_analysis.Payload",
-          "bucket.$": "$.bucket",
-          "key.$": "$.key"
-        }
-      },
-      "ResultPath": "$.comparison",
-      "Next": "CheckForApproval",
-      "Retry": [
-        {
-          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
-          "IntervalSeconds": 2,
-          "MaxAttempts": 3,
-          "BackoffRate": 2.0
-        }
-      ],
-      "Catch": [
-        {
-          "ErrorEquals": ["States.ALL"],
-          "Next": "ComparisonFailed",
-          "ResultPath": "$.error"
-        }
-      ]
-    },
-    "CheckForApproval": {
-      "Type": "Choice",
-      "Choices": [
-        {
-          "Variable": "$.comparison.Payload.discrepancy_analysis.summary.total_discrepancies",
-          "NumericGreaterThan": 0,
-          "Next": "WaitForApproval"
-        }
-      ],
-      "Default": "GenerateReport"
-    },
-    "WaitForApproval": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
-      "Parameters": {
-        "FunctionName": "${AgentLambdaArn}",
-        "Payload": {
-          "action": "hitl_approval",
-          "flags.$": "$.comparison.Payload.discrepancy_analysis",
-          "taskToken": "$$.Task.Token"
-        }
-      },
+      "ResultPath": "$.reconciliation",
       "Next": "GenerateReport",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
       "Catch": [
         {
-          "ErrorEquals": ["States.TaskFailed"],
-          "Next": "ReportGenerationFailed",
+          "ErrorEquals": ["States.ALL"],
+          "Next": "ReconciliationFailed",
           "ResultPath": "$.error"
         }
       ]
@@ -143,8 +75,8 @@
         "FunctionName": "${ReportLambdaArn}",
         "Payload": {
           "extracted_data.$": "$.extraction.Payload",
-          "agent_analysis.$": "$.agent_analysis.Payload",
-          "comparison_results.$": "$.comparison.Payload",
+          "reconciliation.$": "$.reconciliation.Payload",
+          "vendor.$": "$.reconciliation.Payload.vendor",
           "bucket.$": "$.bucket",
           "key.$": "$.key"
         }
@@ -153,7 +85,11 @@
       "Next": "AuditComplete",
       "Retry": [
         {
-          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
           "IntervalSeconds": 2,
           "MaxAttempts": 3,
           "BackoffRate": 2.0
@@ -169,27 +105,19 @@
     },
     "AuditComplete": {
       "Type": "Succeed",
-      "Comment": "MSA invoice audit completed successfully with comprehensive report generated"
+      "Comment": "MSA invoice audit completed successfully"
     },
     "ExtractionFailed": {
       "Type": "Fail",
-      "Comment": "Data extraction from invoice failed",
-      "Cause": "Unable to extract structured data from the uploaded invoice file"
+      "Comment": "Data extraction from invoice failed"
     },
-    "AgentAnalysisFailed": {
+    "ReconciliationFailed": {
       "Type": "Fail",
-      "Comment": "AI agent analysis failed",
-      "Cause": "Bedrock agent was unable to analyze the extracted invoice data"
-    },
-    "ComparisonFailed": {
-      "Type": "Fail",
-      "Comment": "MSA rate comparison failed",
-      "Cause": "Unable to compare invoice rates against MSA standards"
+      "Comment": "MSA reconciliation failed"
     },
     "ReportGenerationFailed": {
       "Type": "Fail",
-      "Comment": "Report generation failed",
-      "Cause": "Unable to generate comprehensive audit report"
+      "Comment": "Report generation failed"
     }
   }
 }
